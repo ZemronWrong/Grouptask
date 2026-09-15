@@ -1,18 +1,36 @@
 /**
- * Peer Evaluation scoring — pure function, no DOM / network deps.
+ * Peer Evaluation Engine
  *
- * PE = (CS × 0.70) + (avgPeerQualityRating × 0.30)
+ * Implements a hybrid quantitative-qualitative scoring model that synthesizes
+ * objective task completion (Contribution Score) with subjective peer ratings.
+ * Pure mathematical functions without DOM or network dependencies.
  *
- * avgPeerQualityRating is on a 0–100 scale (raw ratings are 1-5, normalised).
+ * Mathematical formulation:
+ *   PE_i = (CS_i \times W_{\text{CS}}) + (\overline{R}_i \times W_{\text{Peer}})
+ *   where W_{\text{CS}} = 0.70 and W_{\text{Peer}} = 0.30.
+ *
+ * Pedagogical Rationale:
+ * Pure peer evaluations often degenerate into popularity contests, reciprocal inflation,
+ * or unfair penalization. Anchoring 70% of the grade to verified task completions ensures
+ * objective deliverables remain the primary criterion, while reserving 30% for team-observed
+ * qualitative factors (collaboration, responsiveness, and communication).
  */
 
-const CS_WEIGHT   = 0.70;
+const CS_WEIGHT = 0.70;
 const PEER_WEIGHT = 0.30;
 
 /**
- * Normalise a 1-5 star rating to a 0-100 scale.
- * @param {number} rating  (1–5)
- * @returns {number}       (0–100)
+ * Linearly maps a discrete Likert scale rating (1 to 5 stars) onto a normalized 0-100 percentage range.
+ *
+ * Mathematical mapping:
+ *   R_{\text{norm}} = \frac{r - 1}{5 - 1} \times 100 = \frac{r - 1}{4} \times 100
+ *
+ *   1 Star -> 0%   (Unacceptable / Free-rider behavior)
+ *   3 Stars -> 50%  (Baseline competence)
+ *   5 Stars -> 100% (Exemplary peer contribution)
+ *
+ * @param {number} rating - Integer or decimal rating in range [1, 5].
+ * @returns {number} Normalized rating in range [0, 100]. Returns 0 for out-of-range values.
  */
 export function normaliseRating(rating) {
   if (typeof rating !== 'number' || rating < 1 || rating > 5) return 0;
@@ -20,47 +38,63 @@ export function normaliseRating(rating) {
 }
 
 /**
- * Average of normalised ratings.
- * @param {Array<{rating:number}>} ratings
- * @returns {number} 0–100
+ * Computes the arithmetic mean of normalized peer ratings.
+ *
+ * @param {Array<{rating:number}>} ratings - Array of ratings received by the member.
+ * @returns {number} Mean rating on a 0-100 scale, rounded to 2 decimal places.
  */
 export function averagePeerRating(ratings) {
   if (!Array.isArray(ratings) || ratings.length === 0) return 0;
-  const sum = ratings.reduce((s, r) => s + normaliseRating(r.rating), 0);
+  const sum = ratings.reduce((acc, r) => acc + normaliseRating(r.rating), 0);
   return Math.round((sum / ratings.length) * 100) / 100;
 }
 
 /**
- * Full PE score for one member.
+ * Computes the composite Peer Evaluation (PE) score for an individual student.
  *
- * @param {number} contributionScore  0-100
- * @param {Array<{rating:number}>} peerRatings — ratings this member received
- * @returns {{ peScore:number, csComponent:number, peerComponent:number,
- *             avgPeerRating:number, hasRatings:boolean }}
+ * If no peer ratings have been submitted yet, the score gracefully defaults
+ * to the objective contribution component to avoid penalizing students for pending reviews.
+ *
+ * @param {number} contributionScore - Quantitative contribution score [0, 100].
+ * @param {Array<{rating:number}>} peerRatings - List of peer ratings received by this student.
+ * @returns {{
+ *   peScore: number,
+ *   csComponent: number,
+ *   peerComponent: number,
+ *   avgPeerRating: number,
+ *   hasRatings: boolean
+ * }}
  */
 export function calculatePEScore(contributionScore, peerRatings) {
   const cs = typeof contributionScore === 'number' ? contributionScore : 0;
   const hasRatings = Array.isArray(peerRatings) && peerRatings.length > 0;
   const avg = averagePeerRating(peerRatings);
 
-  const csComponent   = Math.round(cs * CS_WEIGHT * 100) / 100;
+  const csComponent = Math.round(cs * CS_WEIGHT * 100) / 100;
   const peerComponent = hasRatings ? Math.round(avg * PEER_WEIGHT * 100) / 100 : 0;
-  const peScore       = Math.round((csComponent + peerComponent) * 100) / 100;
+  const peScore = Math.round((csComponent + peerComponent) * 100) / 100;
 
-  return { peScore, csComponent, peerComponent, avgPeerRating: avg, hasRatings };
+  return {
+    peScore,
+    csComponent,
+    peerComponent,
+    avgPeerRating: avg,
+    hasRatings,
+  };
 }
 
 /**
- * Batch PE scores for all members.
+ * Batch computes Peer Evaluation scores for all members in a project group.
  *
- * @param {Record<string, {score:number}>} csMap — output of calculateAllContributionScores
- * @param {Record<string, Array<{rating:number}>>} ratingsMap — memberId → ratings received
- * @returns {Record<string, ReturnType<calculatePEScore>>}
+ * @param {Record<string, {score:number}>} csMap - Mapping of memberId to CS objects.
+ * @param {Record<string, Array<{rating:number}>>} ratingsMap - Mapping of memberId to arrays of peer ratings.
+ * @returns {Record<string, ReturnType<typeof calculatePEScore>>} Composite PE evaluation map.
  */
 export function calculateAllPEScores(csMap, ratingsMap) {
-  const out = {};
+  const evaluations = {};
   for (const [id, cs] of Object.entries(csMap)) {
-    out[id] = calculatePEScore(cs.score, ratingsMap[id] || []);
+    evaluations[id] = calculatePEScore(cs.score, ratingsMap[id] || []);
   }
-  return out;
+  return evaluations;
 }
+

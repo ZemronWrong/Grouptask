@@ -56,7 +56,7 @@ export function openDB() {
         s.createIndex('groupId_fromMemberId', ['groupId', 'fromMemberId'], { unique: false });
       }
 
-      // NEW: Peer Reviews store (fixes the critical bug)
+      // Peer reviews and qualitative feedback submitted between members
       if (!db.objectStoreNames.contains(STORES.PEER_REVIEWS)) {
         const s = db.createObjectStore(STORES.PEER_REVIEWS, { keyPath: 'id' });
         s.createIndex('groupId', 'groupId', { unique: false });
@@ -66,12 +66,14 @@ export function openDB() {
         s.createIndex('groupId_evaluateeId', ['groupId', 'evaluateeId'], { unique: false });
       }
 
+      // Offline synchronization queue for pending mutations
       if (!db.objectStoreNames.contains(STORES.SYNC_QUEUE)) {
         const s = db.createObjectStore(STORES.SYNC_QUEUE, { keyPath: 'id', autoIncrement: true });
         s.createIndex('timestamp', 'timestamp', { unique: false });
         s.createIndex('collection', 'collection', { unique: false });
       }
 
+      // Gamification badges unlocked by members
       if (!db.objectStoreNames.contains(STORES.BADGES)) {
         const s = db.createObjectStore(STORES.BADGES, { keyPath: 'id' });
         s.createIndex('memberId', 'memberId', { unique: false });
@@ -79,6 +81,7 @@ export function openDB() {
         s.createIndex('memberId_type', ['memberId', 'type'], { unique: false });
       }
 
+      // Historical gamification points ledger
       if (!db.objectStoreNames.contains(STORES.POINTS)) {
         const s = db.createObjectStore(STORES.POINTS, { keyPath: 'id' });
         s.createIndex('memberId', 'memberId', { unique: false });
@@ -86,6 +89,7 @@ export function openDB() {
         s.createIndex('groupId_memberId', ['groupId', 'memberId'], { unique: false });
       }
 
+      // Work verification and task proof submissions
       if (!db.objectStoreNames.contains(STORES.PROOF_SUBMISSIONS)) {
         const s = db.createObjectStore(STORES.PROOF_SUBMISSIONS, { keyPath: 'id' });
         s.createIndex('taskId',  'taskId',  { unique: false });
@@ -93,7 +97,7 @@ export function openDB() {
         s.createIndex('memberId','memberId',{ unique: false });
       }
 
-      // NEW: Notifications store
+      // User notification inbox and read statuses
       if (!db.objectStoreNames.contains(STORES.NOTIFICATIONS)) {
         const s = db.createObjectStore(STORES.NOTIFICATIONS, { keyPath: 'id' });
         s.createIndex('uid', 'uid', { unique: false });
@@ -102,7 +106,7 @@ export function openDB() {
         s.createIndex('createdAt', 'createdAt', { unique: false });
       }
 
-      // NEW: Comments store
+      // Task discussion threads and contextual comments
       if (!db.objectStoreNames.contains(STORES.COMMENTS)) {
         const s = db.createObjectStore(STORES.COMMENTS, { keyPath: 'id' });
         s.createIndex('taskId', 'taskId', { unique: false });
@@ -111,7 +115,7 @@ export function openDB() {
         s.createIndex('parentId', 'parentId', { unique: false });
       }
 
-      // NEW: Audit Requests store
+      // Audit and governance inspection records
       if (!db.objectStoreNames.contains(STORES.AUDIT_REQUESTS)) {
         const s = db.createObjectStore(STORES.AUDIT_REQUESTS, { keyPath: 'id' });
         s.createIndex('groupId', 'groupId', { unique: false });
@@ -119,12 +123,12 @@ export function openDB() {
         s.createIndex('requestedBy', 'requestedBy', { unique: false });
       }
 
-      // NEW: User Profiles store
+      // Local user preference and customization profiles
       if (!db.objectStoreNames.contains(STORES.USER_PROFILES)) {
         const s = db.createObjectStore(STORES.USER_PROFILES, { keyPath: 'uid' });
       }
 
-      // NEW: Activity Log store (Pulse + History feed)
+      // High-resolution audit timeline and activity stream
       if (!db.objectStoreNames.contains(STORES.ACTIVITY_LOG)) {
         const s = db.createObjectStore(STORES.ACTIVITY_LOG, { keyPath: 'id' });
         s.createIndex('groupId',   'groupId',   { unique: false });

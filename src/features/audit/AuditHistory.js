@@ -5,24 +5,12 @@
  */
 
 import { STORES, getAllByIndex } from '../../services/indexedDBService.js';
-import { escapeHtml } from '../../utils/helpers.js';
+import { escapeHtml, formatTimeAgo } from '../../utils/helpers.js';
 import { navigate } from '../../services/router.js';
 import { sidebarHTML, bindSidebarEvents } from '../members/MemberList.js';
 import { getGroupActivity, ACTIVITY_COLORS } from '../../services/activityLogService.js';
 import { ICONS } from '../../assets/icons/icons.js';
 
-/* ── Time ago ── */
-function timeAgo(ts) {
-  const diff = Date.now() - ts;
-  const m = Math.floor(diff / 60000);
-  if (m < 1) return 'Just now';
-  if (m < 60) return `${m}m ago`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ago`;
-  const d = Math.floor(h / 24);
-  if (d < 7) return `${d}d ago`;
-  return new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-}
 
 /* ── Icon per event type ── */
 function eventIcon(type) {
@@ -90,7 +78,7 @@ function renderTimeline(events) {
               <p class="activity-event-desc">${escapeHtml(e.description)}</p>
               <div class="activity-event-meta">
                 ${e.actorName ? `<span class="activity-actor">${escapeHtml(e.actorName)}</span>` : ''}
-                <span class="activity-time">${timeAgo(e.createdAt)}</span>
+                <span class="activity-time">${formatTimeAgo(e.createdAt)}</span>
               </div>
             </div>
           </div>

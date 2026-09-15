@@ -4,7 +4,7 @@
 
 import { STORES, get, getAll, getAllByIndex } from '../../services/indexedDBService.js';
 import { currentUser } from '../../services/authService.js';
-import { escapeHtml } from '../../utils/helpers.js';
+import { escapeHtml, formatTimeAgo } from '../../utils/helpers.js';
 import { navigate } from '../../services/router.js';
 import { calculatePoints, getXPLevel, calculateStreak, BADGE_TYPES } from '../../core/gamificationEngine.js';
 import { getRoleName } from '../../services/themeService.js';
@@ -157,8 +157,7 @@ export async function renderProfile() {
         <div class="activity-list">
           ${recentTasks.length === 0 ? '<p class="empty-state" style="padding:12px;">No recent activity yet.</p>' : ''}
           ${recentTasks.map(t => {
-            const d = new Date(t.completedAt);
-            const ago = getTimeAgo(d);
+            const ago = formatTimeAgo(t.completedAt);
             return `
               <div class="activity-item">
                 <div class="activity-icon">${ICONS.done}</div>
@@ -178,14 +177,3 @@ export async function renderProfile() {
   document.getElementById('btn-edit-profile').addEventListener('click', () => navigate('#/settings'));
 }
 
-function getTimeAgo(date) {
-  const diff = Date.now() - date.getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return 'Just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  if (days < 7) return `${days}d ago`;
-  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-}

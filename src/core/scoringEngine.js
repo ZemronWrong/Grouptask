@@ -1,87 +1,107 @@
 /**
- * Contribution scoring and free-rider detection — pure functions, no DOM / network deps.
+ * Scoring and Free-Rider Detection Engine
+ *
+ * Provides pure mathematical models for quantitative student contribution tracking
+ * and automated heuristic detection of non-contributing team members ("free-riders").
+ * Designed without DOM or network dependencies to allow isolated testing and reproducible evaluation.
  */
 
 /**
- * CS = (Σ weighted-completed-tasks / Σ total-assigned-weight) × 100
+ * Calculates the individual Contribution Score (CS) for a team member based on task weight completion.
  *
- * @param {Array<{assignedTo:string, status:string, weight:number}>} tasks
- * @param {string} memberId
- * @returns {{ score:number, completedWeight:number, totalWeight:number,
- *             completedCount:number, totalCount:number }}
+ * Mathematical formulation:
+ *   CS_i = ( \sum_{t \in T_i^{\text{done}}} w_t / \sum_{t \in T_i^{\text{assigned}}} w_t ) \times 100
+ *
+ * Rationale:
+ * Simple task counts unfairly reward trivial subtasks. Weight-based normalization ensures that
+ * effort-intensive deliverables dictate contribution proportion. If no tasks are assigned or total
+ * weight is zero, CS defaults to 0% to prevent division-by-zero artifacts.
+ *
+ * @param {Array<{assignedTo:string, status:string, weight:number}>} tasks - All project tasks.
+ * @param {string} memberId - Target team member ID.
+ * @returns {{
+ *   score: number,
+ *   completedWeight: number,
+ *   totalWeight: number,
+ *   completedCount: number,
+ *   totalCount: number
+ * }} Detailed contribution metrics.
  */
 export function calculateContributionScore(tasks, memberId) {
-  const empty = { score: 0, completedWeight: 0, totalWeight: 0, completedCount: 0, totalCount: 0 };
+  const emptyResult = { score: 0, completedWeight: 0, totalWeight: 0, completedCount: 0, totalCount: 0 };
 
-  if (!Array.isArray(tasks) || !memberId) return empty;
+  if (!Array.isArray(tasks) || !memberId) return emptyResult;
 
   const assigned = tasks.filter((t) => t.assignedTo === memberId);
-  if (assigned.length === 0) return empty;
+  if (assigned.length === 0) return emptyResult;
 
-  const totalWeight     = assigned.reduce((s, t) => s + (Number(t.weight) || 0), 0);
-  const completed       = assigned.filter((t) => t.status === 'done');
-  const completedWeight = completed.reduce((s, t) => s + (Number(t.weight) || 0), 0);
+  const totalWeight = assigned.reduce((sum, t) => sum + (Number(t.weight) || 0), 0);
+  const completed = assigned.filter((t) => t.status === 'done');
+  const completedWeight = completed.reduce((sum, t) => sum + (Number(t.weight) || 0), 0);
 
-  const score = totalWeight === 0 ? 0 : Math.round((completedWeight / totalWeight) * 100 * 100) / 100;
+  const score = totalWeight === 0 ? 0 : Math.round((completedWeight / totalWeight) * 10000) / 100;
 
-  return { score, completedWeight, totalWeight, completedCount: completed.length, totalCount: assigned.length };
+  return {
+    score,
+    completedWeight,
+    totalWeight,
+    completedCount: completed.length,
+    totalCount: assigned.length,
+  };
 }
 
 /**
- * Batch-calculate CS for every member in a group.
+ * Computes Contribution Scores in batch across all group members.
  *
- * @param {Array} tasks
- * @param {string[]} memberIds
- * @returns {Record<string, ReturnType<calculateContributionScore>>}
+ * @param {Array} tasks - All group tasks.
+ * @param {string[]} memberIds - Array of member identifiers to evaluate.
+ * @returns {Record<string, ReturnType<typeof calculateContributionScore>>} Map of memberId to contribution score details.
  */
 export function calculateAllContributionScores(tasks, memberIds) {
-  const out = {};
-  for (const id of memberIds) out[id] = calculateContributionScore(tasks, id);
-  return out;
+  const scores = {};
+  for (const id of memberIds) {
+    scores[id] = calculateContributionScore(tasks, id);
+  }
+  return scores;
 }
 
 /**
- * Free-Rider Detection — pure functions, no DOM / network deps.
- *
- * Detects free-riding behaviour by analysing:
- *   1. Contribution score relative to group average
- *   2. Inactivity (days since last task completion)
- *   3. Task acceptance pattern (no in-progress tasks for extended period)
- *
- * Risk levels: 'none' | 'low' | 'medium' | 'high'
+ * Heuristic threshold configuration for identifying disengagement patterns.
+ * 7 days represents a typical academic sprint iteration.
  */
-
 const INACTIVITY_THRESHOLD_DAYS = 7;
 const LOW_CS_THRESHOLD = 20;
-const GROUP_AVG_MIN = 50;
+const GROUP_AVG_BENCHMARK = 50;
+const ONBOARDING_GRACE_PERIOD_DAYS = 3;
 
 /**
- * Calculate days since a member last completed a task.
+ * Computes calendar days elapsed since a member's most recent task completion.
+ * Used to differentiate between consistent contributors and sudden drop-offs.
  *
  * @param {Array<{assignedTo:string, status:string, completedAt?:number}>} tasks
  * @param {string} memberId
- * @returns {number} days since last completion, or Infinity if never completed
+ * @returns {number} Elapsed days since last completion, or Infinity if no tasks were ever completed.
  */
 export function daysSinceLastCompletion(tasks, memberId) {
   if (!Array.isArray(tasks) || !memberId) return Infinity;
 
-  const completed = tasks
+  const completionTimestamps = tasks
     .filter((t) => t.assignedTo === memberId && t.status === 'done' && t.completedAt)
     .map((t) => t.completedAt);
 
-  if (completed.length === 0) return Infinity;
+  if (completionTimestamps.length === 0) return Infinity;
 
-  const latest = Math.max(...completed);
+  const latest = Math.max(...completionTimestamps);
   const diffMs = Date.now() - latest;
   return Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)));
 }
 
 /**
- * Check if a member has zero in-progress or assigned tasks.
+ * Determines whether a member currently holds any ongoing work commitments.
  *
  * @param {Array} tasks
  * @param {string} memberId
- * @returns {boolean}
+ * @returns {boolean} True if the member has neither 'in-progress' nor 'todo' tasks.
  */
 export function hasNoActiveTasks(tasks, memberId) {
   if (!Array.isArray(tasks) || !memberId) return true;
@@ -91,84 +111,94 @@ export function hasNoActiveTasks(tasks, memberId) {
 }
 
 /**
- * Detect free-rider risk for a single member.
+ * Multi-factor heuristic classifier for assessing free-riding risk.
+ *
+ * Factors evaluated:
+ * 1. Contribution Disparity: CS significantly lower than the peer group average.
+ * 2. Prolonged Inactivity: Extended gaps since last task completion relative to sprint cycle.
+ * 3. Work Avoidance: Refusal or failure to claim/accept active tasks after initial onboarding.
+ *
+ * Note: A 3-day grace period is enforced from join date to prevent false positives during team formation.
  *
  * @param {object} params
- * @param {Array} params.tasks — all group tasks
- * @param {string} params.memberId
- * @param {number} params.memberCS — member's contribution score (0-100)
- * @param {number} params.groupAvgCS — group average CS
- * @param {number} params.memberJoinedAt — timestamp when member joined
+ * @param {Array} params.tasks - Full project task set.
+ * @param {string} params.memberId - Target member ID.
+ * @param {number} params.memberCS - Calculated contribution score (0-100).
+ * @param {number} params.groupAvgCS - Overall group average contribution score.
+ * @param {number} [params.memberJoinedAt] - Epoch timestamp when the member joined the team.
  * @returns {{ risk: 'none'|'low'|'medium'|'high', reasons: string[] }}
  */
 export function detectFreeRider({ tasks, memberId, memberCS, groupAvgCS, memberJoinedAt }) {
   const reasons = [];
-  let score = 0; // 0-3 severity points
+  let severityScore = 0;
 
-  // Factor 1: Low CS while group average is decent
-  if (memberCS < LOW_CS_THRESHOLD && groupAvgCS >= GROUP_AVG_MIN) {
-    reasons.push(`Contribution score (${memberCS}%) far below group average (${groupAvgCS}%)`);
-    score += 2;
+  // Factor 1: Divergence from team baseline
+  if (memberCS < LOW_CS_THRESHOLD && groupAvgCS >= GROUP_AVG_BENCHMARK) {
+    reasons.push(`Contribution score (${memberCS}%) is critically below team average (${groupAvgCS}%)`);
+    severityScore += 2;
   } else if (memberCS < LOW_CS_THRESHOLD) {
-    reasons.push(`Very low contribution score (${memberCS}%)`);
-    score += 1;
+    reasons.push(`Low overall completion rate (${memberCS}%)`);
+    severityScore += 1;
   }
 
-  // Factor 2: Inactivity
-  const daysMemberActive = Math.floor((Date.now() - (memberJoinedAt || Date.now())) / (1000 * 60 * 60 * 24));
-  if (daysMemberActive >= 3) { // Only check after 3 days of membership
+  // Factor 2: Temporal dormancy (exempt new joiners during grace window)
+  const daysActive = Math.floor((Date.now() - (memberJoinedAt || Date.now())) / (1000 * 60 * 60 * 24));
+  if (daysActive >= ONBOARDING_GRACE_PERIOD_DAYS) {
     const inactiveDays = daysSinceLastCompletion(tasks, memberId);
     if (inactiveDays >= INACTIVITY_THRESHOLD_DAYS * 2) {
-      reasons.push(`Inactive for ${inactiveDays === Infinity ? '∞' : inactiveDays} days`);
-      score += 2;
+      reasons.push(`No deliverable completed in over ${inactiveDays === Infinity ? '∞' : inactiveDays} days`);
+      severityScore += 2;
     } else if (inactiveDays >= INACTIVITY_THRESHOLD_DAYS) {
-      reasons.push(`Inactive for ${inactiveDays} days`);
-      score += 1;
+      reasons.push(`Inactive for ${inactiveDays} days (exceeds sprint iteration threshold)`);
+      severityScore += 1;
     }
   }
 
-  // Factor 3: No active tasks
+  // Factor 3: Absence of assigned active deliverables
   if (hasNoActiveTasks(tasks, memberId)) {
     const assignedCount = tasks.filter((t) => t.assignedTo === memberId).length;
-    if (assignedCount === 0 && daysMemberActive >= 3) {
-      reasons.push('Has never accepted any tasks');
-      score += 2;
+    if (assignedCount === 0 && daysActive >= ONBOARDING_GRACE_PERIOD_DAYS) {
+      reasons.push('Has not claimed or accepted any tasks since joining');
+      severityScore += 2;
     } else if (assignedCount > 0) {
-      reasons.push('No currently active tasks');
-      score += 1;
+      reasons.push('Currently holds no active tasks in progress');
+      severityScore += 1;
     }
   }
 
   let risk = 'none';
-  if (score >= 5) risk = 'high';
-  else if (score >= 3) risk = 'medium';
-  else if (score >= 1) risk = 'low';
+  if (severityScore >= 5) risk = 'high';
+  else if (severityScore >= 3) risk = 'medium';
+  else if (severityScore >= 1) risk = 'low';
 
   return { risk, reasons };
 }
 
 /**
- * Batch free-rider detection for all members in a group.
+ * Batch analysis of free-rider indicators across an entire team cohort.
  *
- * @param {Array} tasks — all group tasks
- * @param {Array<{id:string, joinedAt?:number}>} members
- * @param {Record<string, {score:number}>} csMap — contribution scores
+ * @param {Array} tasks - Full task list.
+ * @param {Array<{id:string, joinedAt?:number}>} members - Team member records.
+ * @param {Record<string, {score:number}>} csMap - Pre-calculated contribution scores.
  * @returns {Record<string, {risk:string, reasons:string[]}>}
  */
 export function detectAllFreeRiders(tasks, members, csMap) {
-  const scores = Object.values(csMap).map((c) => c.score);
-  const groupAvgCS = scores.length > 0 ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : 0;
+  const scoreValues = Object.values(csMap).map((c) => c.score);
+  const groupAvgCS = scoreValues.length > 0
+    ? Math.round(scoreValues.reduce((a, b) => a + b, 0) / scoreValues.length)
+    : 0;
 
-  const result = {};
-  for (const m of members) {
-    const memberCS = csMap[m.id]?.score ?? 0;
-    result[m.id] = detectFreeRider({
+  const evaluations = {};
+  for (const member of members) {
+    const memberCS = csMap[member.id]?.score ?? 0;
+    evaluations[member.id] = detectFreeRider({
       tasks,
-      memberId: m.id,
+      memberId: member.id,
       memberCS,
       groupAvgCS,
-      memberJoinedAt: m.joinedAt,
+      memberJoinedAt: member.joinedAt,
     });
   }
-  return result;
+  return evaluations;
 }
+

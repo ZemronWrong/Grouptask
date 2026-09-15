@@ -4,7 +4,7 @@ import {
   averagePeerRating,
   calculatePEScore,
   calculateAllPEScores,
-} from '../js/scoring/peerEvaluation.js';
+} from '../src/core/peerEvaluationEngine.js';
 
 describe('normaliseRating', () => {
   test('maps 1 → 0, 3 → 50, 5 → 100', () => {

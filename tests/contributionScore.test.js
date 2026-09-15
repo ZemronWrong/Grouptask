@@ -2,7 +2,7 @@ import { describe, test, expect } from '@jest/globals';
 import {
   calculateContributionScore,
   calculateAllContributionScores,
-} from '../js/scoring/contributionScore.js';
+} from '../src/core/scoringEngine.js';
 
 describe('calculateContributionScore', () => {
   const tasks = [

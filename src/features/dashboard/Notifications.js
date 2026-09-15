@@ -3,7 +3,7 @@
  */
 
 import { currentUser } from '../../services/authService.js';
-import { escapeHtml } from '../../utils/helpers.js';
+import { escapeHtml, formatTimeAgo } from '../../utils/helpers.js';
 import { navigate } from '../../services/router.js';
 import { getNotifications, getUnreadCount, markAsRead, markAllAsRead } from '../../services/notificationService.js';
 import { ICONS } from '../../assets/icons/icons.js';
@@ -149,7 +149,7 @@ async function renderNotifList(filter = 'all') {
       <div class="notif-item-body">
         <div class="notif-item-title">${escapeHtml(n.title)}</div>
         <div class="notif-item-message">${escapeHtml(n.message)}</div>
-        <span class="notif-item-time">${getTimeAgo(new Date(n.createdAt))}</span>
+        <span class="notif-item-time">${formatTimeAgo(n.createdAt)}</span>
       </div>
       ${!n.read ? '<span class="notif-unread-dot"></span>' : ''}
     </div>
@@ -204,13 +204,3 @@ async function updateBellBadge() {
   }
 }
 
-function getTimeAgo(date) {
-  const diff = Date.now() - date.getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return 'Just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
-}

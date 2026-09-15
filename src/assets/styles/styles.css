@@ -3140,3 +3140,8 @@ textarea { resize: vertical; }
   color: var(--primary);
 }
 #btn-mark-all-read .svg-icon { width: 0.8rem; height: 0.8rem; }
+
+/* Audit & Activity History page layout */
+.audit-page {
+  padding: 24px 32px;
+}

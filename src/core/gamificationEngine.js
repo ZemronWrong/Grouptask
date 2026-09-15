@@ -1,16 +1,19 @@
 /**
- * Gamification logic — pure functions, no DOM / network deps.
+ * Gamification Engine
  *
- * - Points per completed task = weight × 10
- * - XP level system (Level 1–20 with titles)
- * - Streak tracking
- * - Milestone badges based on real completions
+ * Implements behavioral incentive mechanisms (experience points, leveling progression,
+ * consecutive completion streaks, and milestone achievements) designed to foster student
+ * accountability and sustained engagement throughout academic project lifecycles.
  */
 
 import { ICONS } from '../assets/icons/icons.js';
 
-/* ── XP Level System ── */
+/* ── XP Level Progression System ── */
 
+/**
+ * 20-tier level progression table calibrated for multi-week academic projects.
+ * Thresholds grow exponentially to reward persistent high-weight contributions.
+ */
 const LEVEL_THRESHOLDS = [
   { level:  1, xp:     0,    title: 'Apprentice' },
   { level:  2, xp:   500,    title: 'Initiate' },
@@ -37,14 +40,21 @@ const LEVEL_THRESHOLDS = [
 export { LEVEL_THRESHOLDS };
 
 /**
- * Get XP level info for a given point total.
- * @param {number} points
- * @returns {{ level:number, title:string, currentXP:number, nextLevelXP:number|null, progress:number }}
+ * Maps cumulative points to the corresponding level tier and computes percentage progress to the next level.
+ *
+ * @param {number} points - Cumulative points earned.
+ * @returns {{
+ *   level: number,
+ *   title: string,
+ *   currentXP: number,
+ *   nextLevelXP: number|null,
+ *   progress: number
+ * }}
  */
 export function getXPLevel(points) {
   let current = LEVEL_THRESHOLDS[0];
-  for (const t of LEVEL_THRESHOLDS) {
-    if (points >= t.xp) current = t;
+  for (const threshold of LEVEL_THRESHOLDS) {
+    if (points >= threshold.xp) current = threshold;
     else break;
   }
 
@@ -67,7 +77,13 @@ export function getXPLevel(points) {
 /* ── Streak Tracking ── */
 
 /**
- * Calculate the current completion streak (consecutive days with at least one task completed).
+ * Computes consecutive active days with at least one task completion.
+ *
+ * Streak Invariants:
+ * - Aggregates events into calendar day buckets (YYYY-MM-DD) to prevent multiple completions in a single day
+ *   from inflating streak length.
+ * - Allows a 1-day grace window from the current date so active streaks are not prematurely terminated
+ *   before the current day concludes.
  *
  * @param {Array<{assignedTo:string, status:string, completedAt?:number}>} tasks
  * @param {string} memberId
@@ -76,52 +92,54 @@ export function getXPLevel(points) {
 export function calculateStreak(tasks, memberId) {
   if (!Array.isArray(tasks) || !memberId) return { currentStreak: 0, longestStreak: 0 };
 
-  const completed = tasks
+  const completedDates = tasks
     .filter((t) => t.assignedTo === memberId && t.status === 'done' && t.completedAt)
     .map((t) => {
       const d = new Date(t.completedAt);
       return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     });
 
-  const uniqueDays = [...new Set(completed)].sort();
+  const uniqueDays = [...new Set(completedDates)].sort();
   if (uniqueDays.length === 0) return { currentStreak: 0, longestStreak: 0 };
 
-  // Build streaks
   let longestStreak = 1;
-  let streak = 1;
+  let runningStreak = 1;
 
   for (let i = 1; i < uniqueDays.length; i++) {
-    const prev = new Date(uniqueDays[i - 1]);
-    const curr = new Date(uniqueDays[i]);
-    const diffDays = Math.round((curr - prev) / (1000 * 60 * 60 * 24));
+    const prevDate = new Date(uniqueDays[i - 1]);
+    const currDate = new Date(uniqueDays[i]);
+    const diffDays = Math.round((currDate - prevDate) / (1000 * 60 * 60 * 24));
 
     if (diffDays === 1) {
-      streak++;
-      if (streak > longestStreak) longestStreak = streak;
+      runningStreak++;
+      if (runningStreak > longestStreak) longestStreak = runningStreak;
     } else {
-      streak = 1;
+      runningStreak = 1;
     }
   }
 
-  // Check if current streak is still active (last completion was today or yesterday)
-  const lastDay = new Date(uniqueDays[uniqueDays.length - 1]);
+  // Active streak verification: last completion must be today or yesterday
+  const lastActiveDay = new Date(uniqueDays[uniqueDays.length - 1]);
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const diffFromToday = Math.round((today - lastDay) / (1000 * 60 * 60 * 24));
+  const daysSinceLastActive = Math.round((today - lastActiveDay) / (1000 * 60 * 60 * 24));
 
-  const currentStreak = diffFromToday <= 1 ? streak : 0;
+  const currentStreak = daysSinceLastActive <= 1 ? runningStreak : 0;
 
   return { currentStreak, longestStreak };
 }
 
-/* ── Points ── */
+/* ── Points & Leaderboard Calculation ── */
 
 /**
- * Calculate total points for a member from their completed tasks.
+ * Calculates raw reward points for completed tasks.
+ * Formula: Points = \sum (weight \times 10).
+ *
+ * Scaling by 10 maps standard task weights (1-10) onto a gamified integer scale suitable for XP milestones.
  *
  * @param {Array<{assignedTo:string, status:string, weight:number}>} tasks
  * @param {string} memberId
- * @returns {number}
+ * @returns {number} Total accumulated points.
  */
 export function calculatePoints(tasks, memberId) {
   if (!Array.isArray(tasks) || !memberId) return 0;
@@ -131,13 +149,22 @@ export function calculatePoints(tasks, memberId) {
 }
 
 /**
- * Build a sorted leaderboard for a group.
+ * Constructs a competitive leaderboard ranked by total points, decorated with XP titles.
  *
- * @param {Array} tasks — all group tasks
- * @param {string[]} memberIds
- * @param {Record<string, string>} nameMap — memberId → displayName
- * @returns {Array<{memberId, displayName, points, rank, level, title}>}
+ * @param {Array} tasks - Group task set.
+ * @param {string[]} memberIds - Group member IDs.
+ * @param {Record<string, string>} [nameMap] - Mapping of memberId to student display name.
+ * @returns {Array<{
+ *   memberId: string,
+ *   displayName: string,
+ *   points: number,
+ *   rank: number,
+ *   level: number,
+ *   title: string,
+ *   xpProgress: number
+ * }>}
  */
+
 export function buildLeaderboard(tasks, memberIds, nameMap = {}) {
   const board = memberIds.map((id) => {
     const points = calculatePoints(tasks, id);
@@ -156,8 +183,11 @@ export function buildLeaderboard(tasks, memberIds, nameMap = {}) {
   return board;
 }
 
-/* ── Badge definitions ── */
-
+/**
+ * Milestone achievement badge definitions.
+ * Each badge corresponds to a specific behavioral goal (volume, high-complexity deliverables,
+ * speed, consistency, or peer collaboration).
+ */
 export const BADGE_TYPES = {
   FIRST_TASK:       { id: 'first_task',       label: 'First Blood',       icon: ICONS.star,      description: 'Completed your first task'                },
   FIVE_TASKS:       { id: 'five_tasks',        label: 'On a Roll',         icon: ICONS.trending,  description: 'Completed 5 tasks'                        },
@@ -176,21 +206,23 @@ export const BADGE_TYPES = {
 };
 
 /**
- * Determine which badges a member has earned.
+ * Evaluates completion records and returns badges earned during the current state transition.
+ * Only returns newly unlocked badges (badges not already present in existingBadgeIds).
  *
- * @param {Array} tasks — all group tasks
- * @param {string} memberId
- * @param {Array} existingBadgeIds — badge type IDs already earned
- * @param {object} [extra] — optional extra data
- * @param {number} [extra.currentStreak] — current streak length
- * @param {Array}  [extra.proofs] — proof submissions for this member
- * @returns {Array<{id:string, label:string, icon:string, description:string}>} — newly earned badges
+ * @param {Array} tasks - All group tasks.
+ * @param {string} memberId - Target member ID.
+ * @param {string[]} [existingBadgeIds] - IDs of badges previously awarded to this member.
+ * @param {object} [extra] - Contextual metadata.
+ * @param {number} [extra.currentStreak] - Length of active streak in days.
+ * @param {Array} [extra.proofs] - Verification proof submissions.
+ * @returns {Array<{id:string, label:string, icon:string, description:string}>} Array of newly earned badge objects.
  */
 export function evaluateBadges(tasks, memberId, existingBadgeIds = [], extra = {}) {
   if (!Array.isArray(tasks) || !memberId) return [];
 
   const completed = tasks.filter((t) => t.assignedTo === memberId && t.status === 'done');
   const newBadges = [];
+
 
   function award(badge) {
     if (!existingBadgeIds.includes(badge.id)) newBadges.push(badge);

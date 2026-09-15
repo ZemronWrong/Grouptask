@@ -8,10 +8,10 @@
 
 import { currentUser, signOut } from '../../services/authService.js';
 import { navigate } from '../../services/router.js';
-import { STORES, get } from '../../services/indexedDBService.js';
+import { STORES, get, getAllByIndex, remove, addToSyncQueue } from '../../services/indexedDBService.js';
 import { getMembershipsForUser, createGroup, joinGroupByCode } from '../../services/memberService.js';
 import { getGroupTasks } from '../../services/taskService.js';
-import { escapeHtml, formatRelative } from '../../utils/helpers.js';
+import { escapeHtml, formatRelative, formatTimeAgo } from '../../utils/helpers.js';
 import { getTerm } from '../../services/themeService.js';
 import { ICONS } from '../../assets/icons/icons.js';
 import { bellIconHTML, bindBellEvents } from './Notifications.js';
@@ -59,17 +59,6 @@ function groupHealth(recentCount, doneCount, taskCount) {
   if (recentCount >= 5 && doneCount > 0) return 'healthy';
   if (recentCount >= 1 || doneCount > 0) return 'moderate';
   return 'idle';
-}
-
-/* ── Time ago helper ── */
-function timeAgo(ts) {
-  const diff = Date.now() - ts;
-  const m = Math.floor(diff / 60000);
-  if (m < 1) return 'just now';
-  if (m < 60) return `${m}m ago`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ago`;
-  return `${Math.floor(h / 24)}d ago`;
 }
 
 /* ── Pulse panel HTML for a group ── */
@@ -186,7 +175,7 @@ function renderPulsePanel(group, tasks, recentEvents, members) {
                 <div class="pulse-feed-dot type-${e.type}"></div>
                 <div class="pulse-feed-body">
                   <span class="pulse-feed-desc">${escapeHtml(e.description)}</span>
-                  <span class="pulse-feed-time">${timeAgo(e.createdAt)}</span>
+                  <span class="pulse-feed-time">${formatTimeAgo(e.createdAt)}</span>
                 </div>
               </div>
             `).join('')}
@@ -335,8 +324,6 @@ async function loadPulse(group, allGroups) {
   if (!main) return;
 
   // Load members for this group
-  const { getAllByIndex, get } = await import('../../services/indexedDBService.js');
-  const { STORES } = await import('../../services/indexedDBService.js');
   const members = await getAllByIndex(STORES.MEMBERS, 'groupId', group.id);
 
   for (const m of members) {
@@ -357,7 +344,6 @@ async function loadPulse(group, allGroups) {
   document.getElementById('btn-dash-delete-group')?.addEventListener('click', async (e) => {
     if (confirm('Are you sure you want to delete this board? This action cannot be undone.')) {
       const gId = e.currentTarget.dataset.groupId;
-      const { remove, addToSyncQueue } = await import('../../services/indexedDBService.js');
       await remove(STORES.GROUPS, gId);
       await addToSyncQueue({ collection: 'groups', docId: gId, operation: 'delete' });
       navigate('#/dashboard');
@@ -371,7 +357,6 @@ async function loadPulse(group, allGroups) {
       const membersList = await getAllByIndex(STORES.MEMBERS, 'groupId', group.id);
       const me = membersList.find(m => m.uid === user.uid);
       if (me) {
-        const { remove, addToSyncQueue } = await import('../../services/indexedDBService.js');
         await remove(STORES.MEMBERS, me.id);
         await addToSyncQueue({ collection: 'members', docId: me.id, operation: 'delete' });
       }
@@ -396,7 +381,7 @@ function bindCreateJoin(user, groups, app) {
         onConfirm: async (overlay) => {
           const name = overlay.querySelector('#new-group-name').value.trim();
           if (!name) return true;
-          const pf = await (await import('../../services/indexedDBService.js')).get(STORES.USER_PROFILES, user.uid);
+          const pf = await get(STORES.USER_PROFILES, user.uid);
           const group = await createGroup({ name, createdBy: user.uid, displayName: pf?.displayName || user.displayName || user.email });
           navigate(`#/group/${group.id}`);
         },
@@ -416,7 +401,7 @@ function bindCreateJoin(user, groups, app) {
           const code = overlay.querySelector('#join-code').value.trim();
           const errorEl = overlay.querySelector('#join-error');
           try {
-            const pf = await (await import('../../services/indexedDBService.js')).get(STORES.USER_PROFILES, user.uid);
+            const pf = await get(STORES.USER_PROFILES, user.uid);
             const group = await joinGroupByCode({ inviteCode: code, uid: user.uid, displayName: pf?.displayName || user.displayName || user.email });
             navigate(`#/group/${group.id}`);
           } catch (err) {
@@ -427,6 +412,7 @@ function bindCreateJoin(user, groups, app) {
       });
     });
   };
+
 
   bindCreate('btn-create-group');
   bindCreate('btn-create-group-empty');

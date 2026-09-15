@@ -4,7 +4,7 @@ import {
   buildLeaderboard,
   evaluateBadges,
   findMostImproved,
-} from '../js/gamification/gamification.js';
+} from '../src/core/gamificationEngine.js';
 
 describe('calculatePoints', () => {
   const tasks = [
