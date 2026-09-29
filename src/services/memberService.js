@@ -31,8 +31,9 @@ export async function createGroup({ name, createdBy, displayName }) {
   await add(STORES.GROUPS, group);
   await addToSyncQueue({ collection: 'groups', docId: group.id, operation: 'add', data: group });
 
+  const memberId = `${group.id}_${createdBy}`;
   const member = {
-    id: generateId(),
+    id: memberId,
     uid: createdBy,
     groupId: group.id,
     displayName,
@@ -77,8 +78,9 @@ export async function joinGroupByCode({ inviteCode, uid, displayName }) {
   const existing = await getAllByIndex(STORES.MEMBERS, 'groupId', group.id);
   if (existing.some((m) => m.uid === uid)) return group;
 
+  const memberId = `${group.id}_${uid}`;
   const member = {
-    id: generateId(),
+    id: memberId,
     uid,
     groupId: group.id,
     displayName,
