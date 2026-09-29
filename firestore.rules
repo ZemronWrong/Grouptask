@@ -54,13 +54,10 @@ service cloud.firestore {
     }
 
     // ── Groups ───────────────────────────────────────────────────────
-    // A user can read a group they created or are a member of.
+    // Any authenticated user can read a group (needed to resolve invite codes).
     // Only the creator (admin) can update or delete the group.
     match /groups/{groupId} {
-      allow read: if isAuthed() && (
-        resource.data.createdBy == request.auth.uid ||
-        isMemberOfGroup(groupId)
-      );
+      allow read: if isAuthed();
       allow create: if isAuthed() &&
         request.resource.data.createdBy == request.auth.uid;
       allow update, delete: if isGroupAdmin(groupId);
