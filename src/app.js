@@ -3,6 +3,7 @@ import { onAuthChange, currentUser } from './services/authService.js';
 import { openDB } from './services/indexedDBService.js';
 import { initTheme } from './services/themeService.js';
 import { startSync, stopSync } from './services/syncService.js';
+import { initConnectionStatus } from './services/connectionStatus.js';
 import { renderLogin } from './features/auth/LoginPage.js';
 import { renderRegister } from './features/auth/RegisterPage.js';
 import { renderDashboard } from './features/dashboard/Dashboard.js';
@@ -36,6 +37,7 @@ function guestOnly(handler) {
 export async function boot() {
   initTheme();
   await openDB();
+  initConnectionStatus();
 
   addRoute('/login', guestOnly(renderLogin));
   addRoute('/register', guestOnly(renderRegister));

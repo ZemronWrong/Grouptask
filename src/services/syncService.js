@@ -17,6 +17,7 @@ import {
 import { fsDb, isMock } from '../config/firebaseConfig.js';
 import { STORES, put, remove, getSyncQueue, removeSyncQueueItem, get } from './indexedDBService.js';
 import { resolveConflict } from './conflictResolver.js';
+import { signalSyncing, signalSynced } from './connectionStatus.js';
 
 let unsubscribers = [];
 let isSyncing = false;
@@ -43,7 +44,7 @@ export function stopSync() {
 }
 
 function listenForChanges(groupId) {
-  const collections = ['tasks', 'members', 'peerRatings', 'badges', 'points', 'proofSubmissions'];
+  const collections = ['tasks', 'members', 'peerRatings', 'peerReviews', 'badges', 'points', 'proofSubmissions', 'events'];
 
   for (const colName of collections) {
     const q = query(fsCollection(fsDb, colName), where('groupId', '==', groupId));
@@ -86,6 +87,7 @@ export async function flushQueue() {
 
   if (!navigator.onLine) return;
   isSyncing = true;
+  signalSyncing();
 
   try {
     const queue = await getSyncQueue();
@@ -107,6 +109,7 @@ export async function flushQueue() {
     }
   } finally {
     isSyncing = false;
+    signalSynced();
   }
 }
 
@@ -115,9 +118,11 @@ function storeForCollection(col) {
     tasks:       STORES.TASKS,
     members:     STORES.MEMBERS,
     peerRatings: STORES.PEER_RATINGS,
+    peerReviews: STORES.PEER_REVIEWS,
     badges:      STORES.BADGES,
     points:      STORES.POINTS,
     proofSubmissions: STORES.PROOF_SUBMISSIONS,
+    events:      STORES.EVENTS,
   };
   return map[col] || col;
 }

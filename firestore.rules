@@ -1,0 +1,249 @@
+rules_version = '2';
+
+// ══════════════════════════════════════════════════════════════════════
+//  GroupTask — Firestore Security Rules
+//
+//  Design Principles:
+//  1. Default-deny: No access unless explicitly granted.
+//  2. Group membership enforced: Users can only read/write data that
+//     belongs to a group they are a member of.
+//  3. Ownership enforced: Users can only modify records they own
+//     (e.g., their own peer reviews, their own events).
+//  4. Admins have elevated write permissions within their group.
+//  5. Sensitive collections (peerReviews) are restricted so only the
+//     reviewer can read their own submitted review; evaluatees cannot.
+// ══════════════════════════════════════════════════════════════════════
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Reusable Helper Functions ────────────────────────────────────
+
+    /**
+     * Returns true if the requesting user is authenticated.
+     */
+    function isAuthed() {
+      return request.auth != null;
+    }
+
+    /**
+     * Checks if a 'members' doc exists for this user in the given group.
+     * Uses the groupId + uid composite pattern from the members store.
+     */
+    function isMemberOfGroup(groupId) {
+      return isAuthed() &&
+        exists(/databases/$(database)/documents/members/$(groupId + '_' + request.auth.uid));
+    }
+
+    /**
+     * Returns true if the user is the creator/admin of a group.
+     */
+    function isGroupAdmin(groupId) {
+      return isAuthed() &&
+        get(/databases/$(database)/documents/groups/$(groupId)).data.createdBy == request.auth.uid;
+    }
+
+    /**
+     * Returns true if the incoming write data contains a `groupId`
+     * field and the user is a member of that group.
+     */
+    function isWritingToOwnGroup() {
+      return isAuthed() &&
+        'groupId' in request.resource.data &&
+        isMemberOfGroup(request.resource.data.groupId);
+    }
+
+    // ── Groups ───────────────────────────────────────────────────────
+    // A user can read a group they created or are a member of.
+    // Only the creator (admin) can update or delete the group.
+    match /groups/{groupId} {
+      allow read: if isAuthed() && (
+        resource.data.createdBy == request.auth.uid ||
+        isMemberOfGroup(groupId)
+      );
+      allow create: if isAuthed() &&
+        request.resource.data.createdBy == request.auth.uid;
+      allow update, delete: if isGroupAdmin(groupId);
+    }
+
+    // ── Members ──────────────────────────────────────────────────────
+    // Any group member can read the member list of their group.
+    // A user can only create their own membership record.
+    // Only the member themselves or a group admin can update/delete.
+    match /members/{memberId} {
+      allow read: if isAuthed() &&
+        isMemberOfGroup(resource.data.groupId);
+      allow create: if isAuthed() &&
+        request.resource.data.uid == request.auth.uid &&
+        'groupId' in request.resource.data;
+      allow update: if isAuthed() && (
+        resource.data.uid == request.auth.uid ||
+        isGroupAdmin(resource.data.groupId)
+      );
+      allow delete: if isAuthed() && (
+        resource.data.uid == request.auth.uid ||
+        isGroupAdmin(resource.data.groupId)
+      );
+    }
+
+    // ── Tasks ────────────────────────────────────────────────────────
+    // Any member of the group can read and create tasks.
+    // Any member can update (e.g. change status, reassign).
+    // Only group admin can permanently delete a task.
+    match /tasks/{taskId} {
+      allow read: if isAuthed() &&
+        isMemberOfGroup(resource.data.groupId);
+      allow create: if isWritingToOwnGroup();
+      allow update: if isAuthed() &&
+        isMemberOfGroup(resource.data.groupId);
+      allow delete: if isAuthed() &&
+        isGroupAdmin(resource.data.groupId);
+    }
+
+    // ── Comments ─────────────────────────────────────────────────────
+    // Any group member can read and write comments on tasks.
+    // Only the comment author can edit/delete their own comment.
+    match /comments/{commentId} {
+      allow read: if isAuthed() &&
+        isMemberOfGroup(resource.data.groupId);
+      allow create: if isWritingToOwnGroup() &&
+        request.resource.data.memberId == request.auth.uid;
+      allow update: if isAuthed() &&
+        resource.data.memberId == request.auth.uid;
+      allow delete: if isAuthed() && (
+        resource.data.memberId == request.auth.uid ||
+        isGroupAdmin(resource.data.groupId)
+      );
+    }
+
+    // ── Peer Reviews (Evaluation) ─────────────────────────────────────
+    // Sensitive: only the reviewer can read their own submitted review.
+    // The evaluatee CANNOT read reviews about themselves (only the
+    // aggregated average score is exposed via their member record).
+    // Group admin CAN read all reviews for governance/oversight.
+    match /peerReviews/{reviewId} {
+      allow read: if isAuthed() && (
+        resource.data.reviewerId == request.auth.uid ||
+        isGroupAdmin(resource.data.groupId)
+      );
+      allow create: if isWritingToOwnGroup() &&
+        request.resource.data.reviewerId == request.auth.uid &&
+        // Prevent self-review
+        request.resource.data.evaluateeId != request.auth.uid;
+      // A reviewer can update/overwrite their own review
+      allow update: if isAuthed() &&
+        resource.data.reviewerId == request.auth.uid &&
+        // Cannot change who is being reviewed after submission
+        request.resource.data.evaluateeId == resource.data.evaluateeId;
+      allow delete: if isAuthed() &&
+        isGroupAdmin(resource.data.groupId);
+    }
+
+    // ── Peer Ratings (Legacy numeric ratings) ────────────────────────
+    match /peerRatings/{ratingId} {
+      allow read: if isAuthed() &&
+        isMemberOfGroup(resource.data.groupId);
+      allow create: if isWritingToOwnGroup();
+      allow update, delete: if isAuthed() &&
+        isMemberOfGroup(resource.data.groupId);
+    }
+
+    // ── Badges ───────────────────────────────────────────────────────
+    // All group members can read badges (shown on leaderboard).
+    // Only the badge owner can create their own badge record.
+    // Badges are immutable once awarded — no updates or user deletes.
+    match /badges/{badgeId} {
+      allow read: if isAuthed() &&
+        isMemberOfGroup(resource.data.groupId);
+      allow create: if isAuthed() &&
+        isMemberOfGroup(request.resource.data.groupId) &&
+        request.resource.data.uid == request.auth.uid;
+      allow update: if false; // Badges are immutable once awarded
+      allow delete: if isAuthed() &&
+        isGroupAdmin(resource.data.groupId);
+    }
+
+    // ── Gamification Events ──────────────────────────────────────────
+    // Events are an append-only ledger. A user can only record events
+    // for themselves. No one (not even admin) can edit or delete events.
+    match /events/{eventId} {
+      allow read: if isAuthed() && (
+        resource.data.userId == request.auth.uid ||
+        isMemberOfGroup(resource.data.boardId)
+      );
+      allow create: if isAuthed() &&
+        request.resource.data.userId == request.auth.uid;
+      allow update: if false; // Events are immutable
+      allow delete: if false; // Events are immutable
+    }
+
+    // ── Points Ledger ────────────────────────────────────────────────
+    match /points/{pointId} {
+      allow read: if isAuthed() &&
+        isMemberOfGroup(resource.data.groupId);
+      allow create: if isWritingToOwnGroup() &&
+        request.resource.data.uid == request.auth.uid;
+      allow update: if isAuthed() &&
+        resource.data.uid == request.auth.uid;
+      allow delete: if false; // Points ledger is immutable
+    }
+
+    // ── Proof Submissions ────────────────────────────────────────────
+    // Members submit proof of work completion.
+    // All group members can read submissions (for transparency).
+    // Only the submitter can create; admin can approve/reject/delete.
+    match /proofSubmissions/{submissionId} {
+      allow read: if isAuthed() &&
+        isMemberOfGroup(resource.data.groupId);
+      allow create: if isWritingToOwnGroup() &&
+        request.resource.data.memberId == request.auth.uid;
+      allow update: if isAuthed() && (
+        resource.data.memberId == request.auth.uid ||
+        isGroupAdmin(resource.data.groupId)
+      );
+      allow delete: if isAuthed() &&
+        isGroupAdmin(resource.data.groupId);
+    }
+
+    // ── Audit Requests ───────────────────────────────────────────────
+    match /auditRequests/{requestId} {
+      allow read: if isAuthed() &&
+        isMemberOfGroup(resource.data.groupId);
+      allow create: if isWritingToOwnGroup();
+      allow update: if isAuthed() && (
+        resource.data.requestedBy == request.auth.uid ||
+        isGroupAdmin(resource.data.groupId)
+      );
+      allow delete: if isAuthed() &&
+        isGroupAdmin(resource.data.groupId);
+    }
+
+    // ── Activity Log ─────────────────────────────────────────────────
+    // All members can read the activity log; it is append-only.
+    // No one can edit or delete log entries.
+    match /activityLog/{logId} {
+      allow read: if isAuthed() &&
+        isMemberOfGroup(resource.data.groupId);
+      allow create: if isWritingToOwnGroup();
+      allow update: if false; // Audit logs are immutable
+      allow delete: if false;
+    }
+
+    // ── Notifications ────────────────────────────────────────────────
+    // A user can only read and update their own notifications.
+    // Any authenticated user can create a notification (for notifying others).
+    match /notifications/{notifId} {
+      allow read, update, delete: if isAuthed() &&
+        resource.data.uid == request.auth.uid;
+      allow create: if isAuthed() &&
+        'uid' in request.resource.data;
+    }
+
+    // ── User Profiles ────────────────────────────────────────────────
+    // A user can only read and write their own profile document.
+    match /userProfiles/{uid} {
+      allow read, write: if isAuthed() && request.auth.uid == uid;
+    }
+
+  }
+}

@@ -217,7 +217,7 @@ export function sidebarHTML(groupId, currentPath, members, tasks) {
           <span>${ICONS.clipboard}</span> Board
         </a>
         <a href="#/group/${groupId}/leaderboard" class="sidebar-link ${currentPath === 'leaderboard' ? 'active' : ''}">
-          <span>${ICONS.trophy}</span> Leaderboard
+          <span>${ICONS.trophy}</span> Leaderboard and Data Visualization
         </a>
         <a href="#/group/${groupId}/evaluate" class="sidebar-link ${currentPath === 'evaluate' ? 'active' : ''}">
           <span>${ICONS.star}</span> Peer Eval

@@ -1,7 +1,7 @@
 import { promisifyRequest, openDatabase } from '../lib/indexedDB.js';
 
 const DB_NAME = 'GroupTaskDB';
-const DB_VERSION = 4;
+const DB_VERSION = 5;
 
 export const STORES = {
   GROUPS:            'groups',
@@ -18,6 +18,7 @@ export const STORES = {
   AUDIT_REQUESTS:    'auditRequests',
   USER_PROFILES:     'userProfiles',
   ACTIVITY_LOG:      'activityLog',
+  EVENTS:            'events',
 };
 
 let dbInstance = null;
@@ -135,6 +136,14 @@ export function openDB() {
         s.createIndex('createdAt', 'createdAt', { unique: false });
         s.createIndex('actorId',   'actorId',   { unique: false });
         s.createIndex('type',      'type',      { unique: false });
+      }
+
+      // Unified Gamification Events
+      if (!db.objectStoreNames.contains(STORES.EVENTS)) {
+        const s = db.createObjectStore(STORES.EVENTS, { keyPath: 'id' });
+        s.createIndex('userId', 'userId', { unique: false });
+        s.createIndex('boardId', 'boardId', { unique: false });
+        s.createIndex('eventType', 'eventType', { unique: false });
       }
     }).then((db) => {
       dbInstance = db;

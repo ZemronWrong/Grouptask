@@ -34,7 +34,7 @@ export function renderRegister() {
         </form>
         <div class="auth-divider"><span>or</span></div>
         <button class="btn btn-google" type="button" id="btn-google">
-          ${ICONS.user}
+          ${ICONS.google}
           Continue with Google
         </button>
       </div>

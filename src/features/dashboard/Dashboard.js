@@ -186,7 +186,7 @@ function renderPulsePanel(group, tasks, recentEvents, members) {
       <!-- Quick Nav -->
       <div class="pulse-quick-nav">
         <button class="pulse-nav-btn" data-href="#/group/${group.id}/members">${ICONS.users} Members</button>
-        <button class="pulse-nav-btn" data-href="#/group/${group.id}/leaderboard">${ICONS.trophy} Leaderboard</button>
+        <button class="pulse-nav-btn" data-href="#/group/${group.id}/leaderboard">${ICONS.trophy} Leaderboard and Data Visualization</button>
         <button class="pulse-nav-btn" data-href="#/group/${group.id}/audit">${ICONS.clipboard} Activity</button>
       </div>
     </div>

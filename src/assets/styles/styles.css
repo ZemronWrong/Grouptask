@@ -533,6 +533,7 @@ textarea { resize: vertical; }
   justify-content: center;
   gap: 12px;
   font-weight: 500;
+  width: 100%;
   transition: background-color 0.2s, box-shadow 0.2s;
 }
 .btn-google:hover {
@@ -3144,4 +3145,97 @@ textarea { resize: vertical; }
 /* Audit & Activity History page layout */
 .audit-page {
   padding: 24px 32px;
+}
+
+/* ═══════════════════════════════════════════
+   CONNECTION STATUS PILL
+   ═══════════════════════════════════════════ */
+#connection-status {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 14px 7px 10px;
+  border-radius: 999px;
+  font-family: var(--font-body, 'Crimson Text', serif);
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255,255,255,0.08);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.35), 0 1px 4px rgba(0,0,0,0.2);
+  transition: background 0.3s ease, color 0.3s ease, border-color 0.3s ease, opacity 0.3s ease;
+  pointer-events: none;
+  user-select: none;
+}
+
+.cs-icon {
+  font-size: 0.7rem;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+}
+
+.cs-label {
+  white-space: nowrap;
+}
+
+/* State: Connected */
+.connection-status.cs-connected {
+  background: rgba(20, 90, 50, 0.75);
+  color: #6effa3;
+  border-color: rgba(110, 255, 163, 0.2);
+}
+.connection-status.cs-connected .cs-icon {
+  color: #6effa3;
+  text-shadow: 0 0 6px #6effa3;
+}
+
+/* State: Syncing */
+.connection-status.cs-syncing {
+  background: rgba(20, 60, 100, 0.75);
+  color: #7dc8ff;
+  border-color: rgba(125, 200, 255, 0.2);
+}
+.connection-status.cs-syncing .cs-icon { color: #7dc8ff; }
+
+/* State: Connecting */
+.connection-status.cs-connecting {
+  background: rgba(60, 45, 10, 0.75);
+  color: #ffd966;
+  border-color: rgba(255, 217, 102, 0.2);
+}
+.connection-status.cs-connecting .cs-icon { color: #ffd966; }
+
+/* State: Offline */
+.connection-status.cs-offline {
+  background: rgba(40, 40, 50, 0.8);
+  color: #b0b0c0;
+  border-color: rgba(180, 180, 200, 0.15);
+}
+.connection-status.cs-offline .cs-icon { color: #b0b0c0; }
+
+/* State: Internet Lost */
+.connection-status.cs-lost {
+  background: rgba(80, 15, 15, 0.82);
+  color: #ff8080;
+  border-color: rgba(255, 128, 128, 0.25);
+}
+.connection-status.cs-lost .cs-icon { color: #ff8080; }
+
+/* Spinning icon for syncing / connecting */
+.connection-status.cs-spin .cs-icon {
+  animation: cs-spin 1s linear infinite;
+  display: inline-block;
+}
+@keyframes cs-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
 }

@@ -3,26 +3,30 @@ import { getAnalytics } from 'firebase/analytics';
 import { getFirestore, enableIndexedDbPersistence } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 
+// Vite exposes VITE_* variables via import.meta.env.
+// Locally these come from .env.local; on Vercel set them in the dashboard.
 const firebaseConfig = {
-  apiKey: 'AIzaSyD2dITOZjKN8KLe7oJZi1xNq6rAyowap1Q',
-  authDomain: 'groupttask.firebaseapp.com',
-  projectId: 'groupttask',
-  storageBucket: 'groupttask.firebasestorage.app',
-  messagingSenderId: '370234607749',
-  appId: '1:370234607749:web:cd416a403b835ad2b441ec',
-  measurementId: 'G-T4LSZ0X9TV',
+  apiKey:            import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain:        import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId:         import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket:     import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId:             import.meta.env.VITE_FIREBASE_APP_ID,
+  measurementId:     import.meta.env.VITE_FIREBASE_MEASUREMENT_ID,
 };
 
+// Falls back to mock mode if no env vars are present (e.g. running tests locally
+// without a .env.local file, or a fork without credentials).
 const isMock = !firebaseConfig.apiKey || firebaseConfig.apiKey === 'YOUR_API_KEY';
 
-let app = null;
-let fsDb = null;
-let auth = null;
+let app     = null;
+let fsDb    = null;
+let auth    = null;
 let analytics = null;
 
 if (!isMock) {
   try {
-    app = initializeApp(firebaseConfig);
+    app  = initializeApp(firebaseConfig);
     fsDb = getFirestore(app);
     auth = getAuth(app);
 
@@ -42,7 +46,7 @@ if (!isMock) {
       }
     });
   } catch (err) {
-    console.error('[Firebase] Failed to initialize Firebase:', err);
+    console.error('[Firebase] Failed to initialize:', err);
   }
 }
 

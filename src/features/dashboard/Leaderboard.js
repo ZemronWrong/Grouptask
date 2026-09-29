@@ -1,11 +1,12 @@
-import { STORES, get, getAllByIndex, put, add, addToSyncQueue } from '../../services/indexedDBService.js';
-import { calculatePoints, getXPLevel } from '../../core/gamificationEngine.js';
+import { STORES, get, getAllByIndex, put, addToSyncQueue } from '../../services/indexedDBService.js';
+import { calculateBoardPoints, recordEvent, EVENT_TYPES } from '../../core/eventEngine.js';
 import { escapeHtml, generateId } from '../../utils/helpers.js';
 import { currentUser } from '../../services/authService.js';
 import { sidebarHTML, bindSidebarEvents } from '../members/MemberList.js';
 import { getTerm } from '../../services/themeService.js';
 import { notify } from '../../services/notificationService.js';
 import { ICONS } from '../../assets/icons/icons.js';
+import { Chart } from 'chart.js/auto';
 
 export async function renderLeaderboard(groupId) {
   const app = document.getElementById('app');
@@ -15,35 +16,25 @@ export async function renderLeaderboard(groupId) {
   const badges = await getAllByIndex(STORES.BADGES, 'groupId', groupId);
   const peerReviews = await getAllByIndex(STORES.PEER_REVIEWS, 'groupId', groupId);
 
-  const leaderboardData = members.map(m => {
-    const taskPts = calculatePoints(tasks, m.id);
-    const mReviews = peerReviews.filter(pr => pr.evaluateeId === m.id);
-    const avgScore = mReviews.length > 0 
-      ? mReviews.reduce((sum, pr) => sum + pr.score, 0) / mReviews.length 
-      : 0;
-    
-    // Add 50 pts per star above 3, subtract 50 pts per star below 3 (if there are reviews)
-    let peerPts = 0;
-    if (mReviews.length > 0) {
-      peerPts = Math.round((avgScore - 3) * 50);
-    }
-    
-    const totalPts = Math.max(0, taskPts + peerPts);
-    const memberBadges = badges.filter(b => b.memberId === m.id);
-    const lvlInfo = getXPLevel(totalPts);
+  // Compute Board Points concurrently for all members
+  const memberPoints = await Promise.all(
+    members.map(async m => {
+      const bp = await calculateBoardPoints(groupId, m.uid);
+      const mReviews = peerReviews.filter(pr => pr.evaluateeId === m.id);
+      const avgScore = mReviews.length > 0 
+        ? mReviews.reduce((sum, pr) => sum + pr.score, 0) / mReviews.length 
+        : 0;
+      return {
+        ...m,
+        boardPoints: bp,
+        avgScore,
+        reviewCount: mReviews.length,
+        badges: badges.filter(b => b.memberId === m.id),
+      };
+    })
+  );
 
-    return {
-      ...m,
-      taskPts,
-      peerPts,
-      totalPts,
-      avgScore,
-      reviewCount: mReviews.length,
-      badges: memberBadges,
-      level: lvlInfo.level
-    };
-  }).sort((a, b) => b.totalPts - a.totalPts);
-
+  const leaderboardData = memberPoints.sort((a, b) => b.boardPoints - a.boardPoints);
   const top3 = leaderboardData.slice(0, 3);
   const rest = leaderboardData.slice(3);
   const rewardLabel = getTerm('rewardLabel');
@@ -54,7 +45,7 @@ export async function renderLeaderboard(groupId) {
       <div class="main-content">
         <header class="board-header">
           <div class="board-header-left">
-            <h1 class="board-title">${ICONS.trophy} Leaderboard</h1>
+            <h1 class="board-title">${ICONS.trophy} Leaderboard and Data Visualization</h1>
           </div>
         </header>
 
@@ -68,8 +59,8 @@ export async function renderLeaderboard(groupId) {
                 <div class="avatar avatar-lg">${escapeHtml(m.displayName?.[0] || '?')}</div>
                 <div style="text-align:center;">
                   <div class="podium-name">${escapeHtml(m.displayName)}</div>
-                  <div class="podium-level">Level ${m.level}</div>
-                  <div class="podium-points">${m.totalPts} <span style="font-size:0.7rem;">${rewardLabel}</span></div>
+                  <div class="podium-level">${m.reviewCount} Reviews</div>
+                  <div class="podium-points">${m.boardPoints} <span style="font-size:0.7rem;">BP</span></div>
                 </div>
               </div>
             `).join('')}
@@ -79,29 +70,49 @@ export async function renderLeaderboard(groupId) {
             <div class="lb-row lb-header">
               <div>Rank</div>
               <div>Member</div>
-              <div>Tasks (${rewardLabel})</div>
-              <div>Peer Adjust</div>
-              <div>Total ${rewardLabel}</div>
-              <div>Badges</div>
+              <div>Board Points (BP)</div>
+              <div>Peer Avg</div>
+              <div>Reviews</div>
+              <div>Board Badges</div>
             </div>
             ${rest.map((m, i) => `
               <div class="lb-row">
                 <div class="lb-rank">#${i + 4}</div>
                 <div>
                   <span style="font-family:var(--font-heading); font-weight:600; color:var(--text);">${escapeHtml(m.displayName)}</span>
-                  <span class="lb-name-level">Level ${m.level}</span>
                 </div>
-                <div style="color:var(--text-secondary);">${m.taskPts}</div>
-                <div style="color:${m.peerPts >= 0 ? 'var(--success)' : 'var(--danger)'};">
-                  ${m.peerPts > 0 ? '+' : ''}${m.peerPts}
-                </div>
-                <div style="font-family:var(--font-heading); font-weight:bold; color:var(--accent);">${m.totalPts}</div>
+                <div style="font-family:var(--font-heading); font-weight:bold; color:var(--accent);">${m.boardPoints}</div>
+                <div style="color:var(--text-secondary);">${m.avgScore.toFixed(1)} / 5.0</div>
+                <div style="color:var(--text-secondary);">${m.reviewCount}</div>
                 <div style="display:flex; gap:4px; flex-wrap:wrap;">
-                  ${m.badges.map(b => `<span title="Achievement Unlocked" style="font-size:1.2rem;">${b.type === 'first_blood' ? '🩸' : b.type === 'overachiever' ? '🔥' : b.type === 'speed_demon' ? '⚡' : '🏅'}</span>`).join('')}
+                  ${m.badges.map(b => `<span title="Achievement" style="font-size:1.2rem;">🏅</span>`).join('')}
                 </div>
               </div>
             `).join('')}
             ${rest.length === 0 ? `<div style="padding: 24px; text-align:center; color:var(--text-muted); font-family:var(--font-heading);">No other members to display.</div>` : ''}
+          </div>
+
+          <div class="leaderboard-charts" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 24px; margin-top: 40px;">
+            <div style="background: var(--bg-card); border-radius: 16px; padding: 24px; box-shadow: var(--shadow-md); border: 1px solid var(--border); display: flex; flex-direction: column; align-items: center;">
+              <h3 style="font-family: var(--font-heading); margin-bottom: 24px; color: var(--text); font-size: 1.1rem; letter-spacing: 0.5px;">Contribution Share</h3>
+              <div style="position: relative; width: 100%; max-width: 250px; aspect-ratio: 1;">
+                <canvas id="pieChart"></canvas>
+              </div>
+            </div>
+            
+            <div style="background: var(--bg-card); border-radius: 16px; padding: 24px; box-shadow: var(--shadow-md); border: 1px solid var(--border); display: flex; flex-direction: column;">
+              <h3 style="font-family: var(--font-heading); margin-bottom: 16px; color: var(--text); font-size: 1.1rem; letter-spacing: 0.5px;">Points Comparison</h3>
+              <div style="flex-grow: 1; min-height: 250px; position: relative;">
+                <canvas id="pointsChart"></canvas>
+              </div>
+            </div>
+
+            <div style="background: var(--bg-card); border-radius: 16px; padding: 24px; box-shadow: var(--shadow-md); border: 1px solid var(--border); display: flex; flex-direction: column; align-items: center;">
+              <h3 style="font-family: var(--font-heading); margin-bottom: 16px; color: var(--text); font-size: 1.1rem; letter-spacing: 0.5px;">Performance Radar</h3>
+              <div style="position: relative; width: 100%; max-width: 280px; aspect-ratio: 1;">
+                <canvas id="radarChart"></canvas>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -109,6 +120,152 @@ export async function renderLeaderboard(groupId) {
   `;
 
   bindSidebarEvents(groupId);
+
+  // Initialize Charts
+  setTimeout(() => {
+    const pointsCtx = document.getElementById('pointsChart');
+    const radarCtx = document.getElementById('radarChart');
+    const pieCtx = document.getElementById('pieChart');
+    
+    if (pointsCtx && radarCtx && pieCtx) {
+      const labels = leaderboardData.map(m => m.displayName || 'Unknown');
+      const totalPoints = leaderboardData.map(m => m.boardPoints);
+      const taskPoints = leaderboardData.map(m => m.boardPoints); // Simplified for now since peer pts are gone
+      const peerPoints = leaderboardData.map(m => m.avgScore);
+
+      // Theme Colors & Fonts
+      const style = getComputedStyle(document.body);
+      const primaryColor = style.getPropertyValue('--primary').trim() || '#4F46E5';
+      const secondaryColor = style.getPropertyValue('--accent').trim() || '#10B981';
+      const dangerColor = style.getPropertyValue('--danger').trim() || '#EF4444';
+      const textColor = style.getPropertyValue('--text').trim() || '#1f2937';
+      const textSecondary = style.getPropertyValue('--text-secondary').trim() || '#6b7280';
+      const borderColor = style.getPropertyValue('--border').trim() || '#e5e7eb';
+      const fontFamily = style.getPropertyValue('--font-body').trim() || "'Inter', sans-serif";
+
+      Chart.defaults.font.family = fontFamily;
+      Chart.defaults.color = textColor;
+
+      new Chart(pointsCtx, {
+        type: 'bar',
+        data: {
+          labels,
+          datasets: [
+            {
+              label: 'Total Points',
+              data: totalPoints,
+              backgroundColor: primaryColor,
+              borderRadius: 4
+            },
+            {
+              label: 'Task Points',
+              data: taskPoints,
+              backgroundColor: secondaryColor,
+              borderRadius: 4
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            legend: { position: 'top', labels: { color: textColor } }
+          },
+          scales: {
+            y: { beginAtZero: true, grid: { color: borderColor }, ticks: { color: textSecondary } },
+            x: { grid: { display: false }, ticks: { color: textSecondary } }
+          }
+        }
+      });
+
+      new Chart(radarCtx, {
+        type: 'radar',
+        data: {
+          labels,
+          datasets: [
+            {
+              label: 'Peer Adjustments',
+              data: peerPoints,
+              backgroundColor: 'rgba(239, 68, 68, 0.2)',
+              borderColor: dangerColor,
+              pointBackgroundColor: dangerColor,
+              pointHoverBackgroundColor: '#fff',
+              pointHoverBorderColor: dangerColor
+            },
+            {
+              label: 'Task Points',
+              data: taskPoints,
+              backgroundColor: 'rgba(16, 185, 129, 0.2)',
+              borderColor: secondaryColor,
+              pointBackgroundColor: secondaryColor,
+              pointHoverBackgroundColor: '#fff',
+              pointHoverBorderColor: secondaryColor
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { position: 'bottom', labels: { color: textColor, font: { size: 11 } } }
+          },
+          scales: {
+            r: {
+              angleLines: { color: borderColor },
+              grid: { color: borderColor },
+              pointLabels: { color: textColor, font: { size: 10 } },
+              ticks: { display: false, backdropColor: 'transparent' }
+            }
+          }
+        }
+      });
+
+      // Distinct colors for the pie chart
+      const pieColors = [
+        primaryColor, 
+        secondaryColor, 
+        '#F59E0B', '#3B82F6', '#8B5CF6', '#EC4899', '#14B8A6'
+      ];
+
+      new Chart(pieCtx, {
+        type: 'doughnut',
+        data: {
+          labels,
+          datasets: [{
+            data: taskPoints, // base contribution on tasks completed
+            backgroundColor: pieColors.slice(0, labels.length),
+            borderWidth: 2,
+            borderColor: getComputedStyle(document.body).getPropertyValue('--bg-card').trim() || '#fff'
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          cutout: '65%',
+          plugins: {
+            legend: { 
+              position: 'bottom', 
+              labels: { 
+                color: textColor, 
+                padding: 15,
+                usePointStyle: true,
+                font: { size: 11 }
+              } 
+            },
+            tooltip: {
+              callbacks: {
+                label: function(context) {
+                  let value = context.raw || 0;
+                  let total = context.chart._metasets[context.datasetIndex].total;
+                  let percentage = total > 0 ? Math.round((value / total) * 100) + '%' : '0%';
+                  return ` ${value} pts (${percentage})`;
+                }
+              }
+            }
+          }
+        }
+      });
+    }
+  }, 0);
 }
 
 export async function renderEvaluation(groupId) {
@@ -216,6 +373,23 @@ export async function renderEvaluation(groupId) {
       evaluatee.averagePeerScore = newAvg;
       await put(STORES.MEMBERS, evaluatee);
       await addToSyncQueue({ collection: 'members', docId: evaluatee.id, operation: 'update', data: evaluatee });
+
+      // Record Peer Eval Rep Event
+      let eventType = null;
+      let repDelta = 0;
+      if (newAvg >= 4.0) { eventType = EVENT_TYPES.PEER_EVAL_HIGH; repDelta = 15; }
+      else if (newAvg < 2.5) { eventType = EVENT_TYPES.PEER_EVAL_LOW; repDelta = -20; }
+      
+      if (eventType) {
+        await recordEvent({
+          eventType,
+          userId: evaluatee.uid,
+          memberId: evaluatee.id,
+          boardId: groupId,
+          repDelta,
+          metadata: { avgScore: newAvg, reviewId }
+        });
+      }
 
       // Notify the evaluatee
       await notify({

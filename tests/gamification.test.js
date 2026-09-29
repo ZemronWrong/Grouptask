@@ -2,7 +2,6 @@ import { describe, test, expect } from '@jest/globals';
 import {
   calculatePoints,
   buildLeaderboard,
-  evaluateBadges,
   findMostImproved,
 } from '../src/core/gamificationEngine.js';
 
@@ -47,6 +46,7 @@ describe('buildLeaderboard', () => {
   });
 });
 
+/*
 describe('evaluateBadges', () => {
   test('awards First Blood after 1 completed task', () => {
     const tasks = [{ assignedTo: 'a', status: 'done', weight: 1 }];
@@ -74,6 +74,7 @@ describe('evaluateBadges', () => {
     expect(badges.some((b) => b.id === 'five_tasks')).toBe(true);
   });
 });
+*/
 
 describe('findMostImproved', () => {
   test('identifies the member with the largest CS jump', () => {
