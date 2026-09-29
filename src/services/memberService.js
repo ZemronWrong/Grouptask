@@ -2,6 +2,13 @@ import { STORES, add, put, get, remove, getAll, getAllByIndex, addToSyncQueue } 
 import { generateId, generateInviteCode } from '../utils/helpers.js';
 import { notify } from './notificationService.js';
 import { logActivity } from './activityLogService.js';
+import { fsDb, isMock } from '../config/firebaseConfig.js';
+import {
+  collection,
+  query,
+  where,
+  getDocs,
+} from 'firebase/firestore';
 
 export function getGroupMembers(groupId) {
   return getAllByIndex(STORES.MEMBERS, 'groupId', groupId);
@@ -38,9 +45,34 @@ export async function createGroup({ name, createdBy, displayName }) {
 }
 
 export async function joinGroupByCode({ inviteCode, uid, displayName }) {
-  const groups = await getAll(STORES.GROUPS);
-  const group = groups.find((g) => g.inviteCode?.toUpperCase() === inviteCode.trim().toUpperCase());
-  if (!group) throw new Error('Invite code not found.');
+  const normalizedCode = inviteCode.trim().toUpperCase();
+
+  // 1. Check local IndexedDB first (fast path — works offline too)
+  let group = null;
+  const localGroups = await getAll(STORES.GROUPS);
+  group = localGroups.find((g) => g.inviteCode?.toUpperCase() === normalizedCode);
+
+  // 2. If not found locally, query Firestore directly.
+  //    This is the critical path for NEW users on Vercel whose local DB is empty.
+  if (!group && !isMock) {
+    try {
+      const q = query(
+        collection(fsDb, 'groups'),
+        where('inviteCode', '==', normalizedCode)
+      );
+      const snapshot = await getDocs(q);
+      if (!snapshot.empty) {
+        group = { id: snapshot.docs[0].id, ...snapshot.docs[0].data() };
+        // Seed the local DB so future reads are fast
+        await put(STORES.GROUPS, group);
+      }
+    } catch (err) {
+      console.warn('[joinGroup] Firestore fallback failed:', err.message);
+    }
+  }
+
+  if (!group) throw new Error('Invite code not found. Double-check the code and try again.');
+
 
   const existing = await getAllByIndex(STORES.MEMBERS, 'groupId', group.id);
   if (existing.some((m) => m.uid === uid)) return group;
