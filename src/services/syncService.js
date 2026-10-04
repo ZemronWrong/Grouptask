@@ -13,6 +13,7 @@ import {
   onSnapshot,
   query,
   where,
+  serverTimestamp,
 } from 'firebase/firestore';
 import { fsDb, isMock } from '../config/firebaseConfig.js';
 import { STORES, put, remove, getSyncQueue, removeSyncQueueItem, get } from './indexedDBService.js';
@@ -97,8 +98,18 @@ export async function flushQueue() {
         if (entry.operation === 'delete') {
           await deleteDoc(ref);
         } else {
+          // Build the Firestore payload: strip the local 'id' field (it's
+          // already the document path) and replace client timestamps with
+          // server timestamps so the authoritative time comes from Firebase,
+          // not the client clock (which may be skewed or manipulated).
           const data = { ...entry.data };
           delete data.id;
+          const SERVER_TS_FIELDS = ['createdAt', 'updatedAt', 'completedAt', 'joinedAt'];
+          for (const field of SERVER_TS_FIELDS) {
+            if (field in data && data[field] != null) {
+              data[field] = serverTimestamp();
+            }
+          }
           await setDoc(ref, data, { merge: true });
         }
         await removeSyncQueueItem(entry.id);

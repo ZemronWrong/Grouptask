@@ -1,6 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { getAnalytics } from 'firebase/analytics';
-import { getFirestore, enableIndexedDbPersistence } from 'firebase/firestore';
+import { getFirestore } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 
 // Vite exposes VITE_* variables via import.meta.env.
@@ -38,13 +38,11 @@ if (!isMock) {
       }
     }
 
-    enableIndexedDbPersistence(fsDb).catch((err) => {
-      if (err.code === 'failed-precondition') {
-        console.warn('[Firebase] Persistence unavailable — multiple tabs open.');
-      } else if (err.code === 'unimplemented') {
-        console.warn('[Firebase] Persistence not supported in this browser.');
-      }
-    });
+    // NOTE: enableIndexedDbPersistence is intentionally NOT called here.
+    // This app uses its own IndexedDB sync queue (syncService.js) as the
+    // single source of truth for offline resilience. Running Firestore's
+    // built-in persistence alongside the custom queue creates duplicate
+    // write paths and race conditions on reconnect. One system only.
   } catch (err) {
     console.error('[Firebase] Failed to initialize:', err);
   }
