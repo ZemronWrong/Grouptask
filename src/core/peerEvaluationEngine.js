@@ -52,17 +52,23 @@ export function averagePeerRating(ratings) {
 /**
  * Computes the composite Peer Evaluation (PE) score for an individual student.
  *
- * If no peer ratings have been submitted yet, the score gracefully defaults
- * to the objective contribution component to avoid penalizing students for pending reviews.
+ * No-ratings fallback (explicit, per advisor feedback):
+ *   When hasRatings is false, the PE score equals CS × 0.70 only, NOT the
+ *   full 100-point scale. This must be reported transparently in the UI
+ *   (ratingsStatus field) so evaluators know the score is incomplete.
  *
- * @param {number} contributionScore - Quantitative contribution score [0, 100].
- * @param {Array<{rating:number}>} peerRatings - List of peer ratings received by this student.
+ * Full formula (when ratings exist):
+ *   PE_i = (CS_i × 0.70) + (avg_peer_rating_normalized × 0.30)
+ *
+ * @param {number} contributionScore - Quantitative WPS score [0, 100].
+ * @param {Array<{rating:number}>} peerRatings - List of peer ratings received.
  * @returns {{
  *   peScore: number,
  *   csComponent: number,
  *   peerComponent: number,
  *   avgPeerRating: number,
- *   hasRatings: boolean
+ *   hasRatings: boolean,
+ *   ratingsStatus: 'has_ratings' | 'no_ratings_defaulting_to_cs'
  * }}
  */
 export function calculatePEScore(contributionScore, peerRatings) {
@@ -70,9 +76,9 @@ export function calculatePEScore(contributionScore, peerRatings) {
   const hasRatings = Array.isArray(peerRatings) && peerRatings.length > 0;
   const avg = averagePeerRating(peerRatings);
 
-  const csComponent = Math.round(cs * CS_WEIGHT * 100) / 100;
+  const csComponent   = Math.round(cs * CS_WEIGHT * 100) / 100;
   const peerComponent = hasRatings ? Math.round(avg * PEER_WEIGHT * 100) / 100 : 0;
-  const peScore = Math.round((csComponent + peerComponent) * 100) / 100;
+  const peScore       = Math.round((csComponent + peerComponent) * 100) / 100;
 
   return {
     peScore,
@@ -80,6 +86,9 @@ export function calculatePEScore(contributionScore, peerRatings) {
     peerComponent,
     avgPeerRating: avg,
     hasRatings,
+    // Explicit status string — callers should display this to avoid
+    // misleading users about why a score appears capped at 70.
+    ratingsStatus: hasRatings ? 'has_ratings' : 'no_ratings_defaulting_to_cs',
   };
 }
 

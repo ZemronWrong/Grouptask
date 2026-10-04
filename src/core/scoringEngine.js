@@ -7,60 +7,75 @@
  */
 
 /**
- * Calculates the individual Contribution Score (CS) for a team member based on task weight completion.
+ * Calculates the individual Weighted Proportional Share (WPS) for a team member.
  *
- * Mathematical formulation:
- *   CS_i = ( \sum_{t \in T_i^{\text{done}}} w_t / \sum_{t \in T_i^{\text{assigned}}} w_t ) \times 100
+ * This replaces the previous completion-rate formula which measured efficiency
+ * (done/assigned) rather than contribution (my share / total group output).
+ *
+ * New mathematical formulation:
+ *
+ *   WPS_i = ( Σ w_t  for t ∈ done tasks of member i )
+ *           ─────────────────────────────────────────  × 100
+ *           ( Σ w_t  for ALL done tasks in the group  )
  *
  * Rationale:
- * Simple task counts unfairly reward trivial subtasks. Weight-based normalization ensures that
- * effort-intensive deliverables dictate contribution proportion. If no tasks are assigned or total
- * weight is zero, CS defaults to 0% to prevent division-by-zero artifacts.
+ *  - A member with 1 easy done task can no longer outscore someone who
+ *    completed most of the group's work.
+ *  - A member with 0 assigned tasks returns 0 (no divide-by-zero).
+ *  - When no tasks are done by anyone, all scores are 0 (avoids NaN).
  *
- * @param {Array<{assignedTo:string, status:string, weight:number}>} tasks - All project tasks.
- * @param {string} memberId - Target team member ID.
+ * @param {Array<{assignedTo:string, status:string, weight:number}>} allGroupTasks - ALL tasks in the group.
+ * @param {string} memberId - Target team member ID (member record ID, not UID).
  * @returns {{
- *   score: number,
- *   completedWeight: number,
- *   totalWeight: number,
+ *   score: number,         — WPS as a percentage [0–100]
+ *   completedWeight: number, — sum of done-task weights for this member
+ *   groupDoneWeight: number, — sum of done-task weights across the entire group
  *   completedCount: number,
  *   totalCount: number
- * }} Detailed contribution metrics.
+ * }}
  */
-export function calculateContributionScore(tasks, memberId) {
-  const emptyResult = { score: 0, completedWeight: 0, totalWeight: 0, completedCount: 0, totalCount: 0 };
+export function calculateContributionScore(allGroupTasks, memberId) {
+  const emptyResult = { score: 0, completedWeight: 0, groupDoneWeight: 0, completedCount: 0, totalCount: 0 };
 
-  if (!Array.isArray(tasks) || !memberId) return emptyResult;
+  if (!Array.isArray(allGroupTasks) || !memberId) return emptyResult;
 
-  const assigned = tasks.filter((t) => t.assignedTo === memberId);
-  if (assigned.length === 0) return emptyResult;
+  // All done tasks across the entire group (denominator)
+  const allDone       = allGroupTasks.filter((t) => t.status === 'done');
+  const groupDoneWeight = allDone.reduce((sum, t) => sum + (Number(t.weight) || 0), 0);
 
-  const totalWeight = assigned.reduce((sum, t) => sum + (Number(t.weight) || 0), 0);
-  const completed = assigned.filter((t) => t.status === 'done');
-  const completedWeight = completed.reduce((sum, t) => sum + (Number(t.weight) || 0), 0);
+  // This member's done tasks (numerator)
+  const myDone          = allDone.filter((t) => t.assignedTo === memberId);
+  const completedWeight = myDone.reduce((sum, t) => sum + (Number(t.weight) || 0), 0);
 
-  const score = totalWeight === 0 ? 0 : Math.round((completedWeight / totalWeight) * 10000) / 100;
+  // Total tasks assigned to this member (for informational output only)
+  const assigned = allGroupTasks.filter((t) => t.assignedTo === memberId);
+
+  // Guard: if nothing is done group-wide, every score is 0
+  const score = groupDoneWeight === 0 ? 0 : Math.round((completedWeight / groupDoneWeight) * 10000) / 100;
 
   return {
     score,
     completedWeight,
-    totalWeight,
-    completedCount: completed.length,
+    groupDoneWeight,
+    completedCount: myDone.length,
     totalCount: assigned.length,
   };
 }
 
 /**
- * Computes Contribution Scores in batch across all group members.
+ * Computes Weighted Proportional Share scores in batch across all group members.
  *
- * @param {Array} tasks - All group tasks.
- * @param {string[]} memberIds - Array of member identifiers to evaluate.
- * @returns {Record<string, ReturnType<typeof calculateContributionScore>>} Map of memberId to contribution score details.
+ * All members receive the same `allGroupTasks` array so that each score
+ * is calculated relative to the same group-wide denominator.
+ *
+ * @param {Array} allGroupTasks - All tasks in the group.
+ * @param {string[]} memberIds  - Member IDs to evaluate.
+ * @returns {Record<string, ReturnType<typeof calculateContributionScore>>}
  */
-export function calculateAllContributionScores(tasks, memberIds) {
+export function calculateAllContributionScores(allGroupTasks, memberIds) {
   const scores = {};
   for (const id of memberIds) {
-    scores[id] = calculateContributionScore(tasks, id);
+    scores[id] = calculateContributionScore(allGroupTasks, id);
   }
   return scores;
 }

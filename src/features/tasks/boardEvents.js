@@ -335,6 +335,32 @@ export async function saveTask(groupId, members) {
 export async function moveTask(taskId, newStatus, groupId, members) {
   const task = await get(STORES.TASKS, taskId);
   if (!task || task.status === newStatus) return;
+
+  const user   = currentUser();
+  const me     = members.find((m) => m.uid === user?.uid);
+  const isAdmin = me?.role === 'owner' || me?.role === 'co-admin';
+  const isMyCard = task.assignedTo === me?.id;
+
+  // ── Permission rules (enforced client-side; Firestore rules back this up) ──
+  // 1. Members can move their own cards freely between todo ↔ in-progress.
+  // 2. Any member can move their own card TO pending-approval (this is how
+  //    they submit for review; mirrors the "Submit Proof" button).
+  // 3. Only owner/co-admin can move a card directly to 'done' (approval bypass).
+  // 4. Admins can move any card to any status.
+
+  if (!isAdmin) {
+    // Non-admin trying to approve directly to done
+    if (newStatus === 'done') {
+      showToast('Only an admin can approve tasks. Use "Submit for Approval" instead.');
+      return;
+    }
+    // Non-admin trying to move someone else's card
+    if (!isMyCard && newStatus !== 'todo') {
+      showToast('You can only move your own tasks.');
+      return;
+    }
+  }
+
   const oldStatus = task.status;
   task.status    = newStatus;
   task.updatedAt = Date.now();
@@ -343,11 +369,10 @@ export async function moveTask(taskId, newStatus, groupId, members) {
   await addToSyncQueue({ collection: 'tasks', docId: taskId, operation: 'update', data: task });
 
   const STATUS_LABELS = { 'todo': 'To Do', 'in-progress': 'In Progress', 'pending-approval': 'Pending Approval', 'done': 'Completed' };
-  const mover = members.find((m) => m.uid === currentUser()?.uid);
 
   await logActivity({
     groupId, type: newStatus === 'done' ? 'task_completed' : 'task_moved',
-    actorId: mover?.id || null, actorName: mover?.displayName || 'Someone',
+    actorId: me?.id || null, actorName: me?.displayName || 'Someone',
     description: `Moved "${task.title}" from ${STATUS_LABELS[oldStatus] || oldStatus} → ${STATUS_LABELS[newStatus] || newStatus}`,
     meta: { taskId, taskTitle: task.title, oldStatus, newStatus },
   });

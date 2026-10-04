@@ -84,15 +84,33 @@ service cloud.firestore {
     }
 
     // ── Tasks ────────────────────────────────────────────────────────
-    // Any member of the group can read and create tasks.
-    // Any member can update (e.g. change status, reassign).
-    // Only group admin can permanently delete a task.
+    // Read:   any group member.
+    // Create: any group member (createdBy is recorded for audit).
+    // Update: assignee can move their own card to todo/in-progress/pending-approval.
+    //         Only owner/co-admin can set status='done' or change task weight.
+    // Delete: only group admin.
+    //
+    // NOTE: weight is locked after creation — only admins may change it to
+    // prevent members from inflating their own WPS contribution scores.
     match /tasks/{taskId} {
       allow read: if isAuthed() &&
         isMemberOfGroup(resource.data.groupId);
+
       allow create: if isWritingToOwnGroup();
-      allow update: if isAuthed() &&
-        isMemberOfGroup(resource.data.groupId);
+
+      allow update: if isAuthed() && isMemberOfGroup(resource.data.groupId) && (
+        // Admins can do anything
+        isGroupAdmin(resource.data.groupId) ||
+        (
+          // Members may only update their own assigned card...
+          resource.data.assignedTo == request.auth.uid &&
+          // ...and may NOT move directly to 'done' (must go through approval)
+          request.resource.data.status != 'done' &&
+          // ...and may NOT change the weight (protects score integrity)
+          request.resource.data.weight == resource.data.weight
+        )
+      );
+
       allow delete: if isAuthed() &&
         isGroupAdmin(resource.data.groupId);
     }
