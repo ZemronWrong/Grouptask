@@ -35,13 +35,27 @@ export async function startSync(groupId) {
     return;
   }
   listenForChanges(groupId);
+
+  // Network reconnections trigger a flush
   window.addEventListener('online', () => flushQueue());
   if (navigator.onLine) await flushQueue();
+
+  // Local actions trigger a flush (debounced to batch rapid writes)
+  window.addEventListener('sync-enqueued', handleSyncEnqueued);
+}
+
+let flushTimeout = null;
+function handleSyncEnqueued() {
+  if (flushTimeout) clearTimeout(flushTimeout);
+  flushTimeout = setTimeout(() => {
+    if (navigator.onLine) flushQueue();
+  }, 500); // 500ms debounce
 }
 
 export function stopSync() {
   unsubscribers.forEach((unsub) => unsub());
   unsubscribers = [];
+  window.removeEventListener('sync-enqueued', handleSyncEnqueued);
 }
 
 function listenForChanges(groupId) {

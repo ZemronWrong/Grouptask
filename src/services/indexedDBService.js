@@ -193,7 +193,10 @@ export async function clear(storeName) {
 }
 
 export async function addToSyncQueue(entry) {
-  return add(STORES.SYNC_QUEUE, { ...entry, timestamp: Date.now() });
+  const result = await add(STORES.SYNC_QUEUE, { ...entry, timestamp: Date.now() });
+  // Emit event so the sync engine knows to wake up and flush immediately
+  window.dispatchEvent(new CustomEvent('sync-enqueued'));
+  return result;
 }
 
 export async function getSyncQueue() {
