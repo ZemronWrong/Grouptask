@@ -1,8 +1,8 @@
-import { addRoute, initRouter, navigate } from './services/router.js';
+import { addRoute, initRouter, navigate, reloadCurrentRoute } from './services/router.js';
 import { onAuthChange, currentUser } from './services/authService.js';
 import { openDB } from './services/indexedDBService.js';
 import { initTheme } from './services/themeService.js';
-import { startSync, stopSync } from './services/syncService.js';
+import { startSync, stopSync, setRemoteChangeCallback } from './services/syncService.js';
 import { initConnectionStatus } from './services/connectionStatus.js';
 import { renderLogin } from './features/auth/LoginPage.js';
 import { renderRegister } from './features/auth/RegisterPage.js';
@@ -74,6 +74,17 @@ export async function boot() {
     } else if (user && (path === '/login' || path === '/register' || path === '')) {
       navigate('#/dashboard');
     }
+  });
+
+  // When Firestore pushes new data to IndexedDB, refresh the active screen
+  setRemoteChangeCallback(() => {
+    // Prevent violent refreshes if the user is typing inside a modal
+    const isModalOpen = document.querySelector('.modal-overlay:not([hidden])');
+    if (isModalOpen) {
+      console.info('[App] Remote change received, but delaying UI refresh because a modal is open.');
+      return;
+    }
+    reloadCurrentRoute();
   });
 
   initRouter();

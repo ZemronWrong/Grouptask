@@ -54,3 +54,7 @@ export function initRouter() {
   window.addEventListener('hashchange', onHashChange);
   onHashChange();
 }
+
+export function reloadCurrentRoute() {
+  onHashChange();
+}
