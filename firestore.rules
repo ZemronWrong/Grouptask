@@ -119,17 +119,27 @@ service cloud.firestore {
     }
 
     // ── Comments ─────────────────────────────────────────────────────
-    // Any group member can read and write comments on tasks.
-    // Only the comment author can edit/delete their own comment.
+    // Any group member can read and create comments.
+    // NOTE: memberId stores the composite 'groupId_uid' member record ID,
+    // NOT the raw Firebase UID — so we cannot compare it to request.auth.uid
+    // directly. Instead we verify group membership and use the composite pattern.
     match /comments/{commentId} {
       allow read: if isAuthed() &&
         isMemberOfGroup(resource.data.groupId);
+
+      // Any authenticated group member can post a comment.
+      // The app sets memberId = groupId + '_' + uid, which we verify here.
       allow create: if isWritingToOwnGroup() &&
-        request.resource.data.memberId == request.auth.uid;
+        request.resource.data.memberId == (request.resource.data.groupId + '_' + request.auth.uid);
+
+      // Only the original commenter can edit their own comment.
       allow update: if isAuthed() &&
-        resource.data.memberId == request.auth.uid;
+        isMemberOfGroup(resource.data.groupId) &&
+        resource.data.memberId == (resource.data.groupId + '_' + request.auth.uid);
+
+      // The author or a group admin can delete a comment.
       allow delete: if isAuthed() && (
-        resource.data.memberId == request.auth.uid ||
+        resource.data.memberId == (resource.data.groupId + '_' + request.auth.uid) ||
         isGroupAdmin(resource.data.groupId)
       );
     }
