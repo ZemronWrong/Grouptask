@@ -77,6 +77,7 @@ export async function boot() {
   });
 
   // When Firestore pushes new data to IndexedDB, refresh the active screen
+  let reloadTimeout = null;
   setRemoteChangeCallback(() => {
     // Prevent violent refreshes if the user is typing inside a modal
     const isModalOpen = document.querySelector('.modal-overlay:not([hidden])');
@@ -84,7 +85,12 @@ export async function boot() {
       console.info('[App] Remote change received, but delaying UI refresh because a modal is open.');
       return;
     }
-    reloadCurrentRoute();
+    
+    // Debounce the reload to prevent UI flickering on burst updates (like initial load)
+    if (reloadTimeout) clearTimeout(reloadTimeout);
+    reloadTimeout = setTimeout(() => {
+      reloadCurrentRoute();
+    }, 300);
   });
 
   initRouter();

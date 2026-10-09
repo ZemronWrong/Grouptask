@@ -22,6 +22,7 @@ import { signalSyncing, signalSynced } from './connectionStatus.js';
 
 let unsubscribers = [];
 let isSyncing = false;
+let isSyncingGroup = null;
 let onRemoteChange = null;
 
 export function setRemoteChangeCallback(cb) {
@@ -29,7 +30,12 @@ export function setRemoteChangeCallback(cb) {
 }
 
 export async function startSync(groupId) {
+  if (isSyncingGroup === groupId) {
+    return; // Already syncing this group, prevent infinite reload loops
+  }
+  
   stopSync();
+  isSyncingGroup = groupId;
   if (isMock) {
     console.info('[Sync Engine Mock] Running in mock offline mode. Firestore sync disabled.');
     return;
@@ -55,6 +61,7 @@ function handleSyncEnqueued() {
 export function stopSync() {
   unsubscribers.forEach((unsub) => unsub());
   unsubscribers = [];
+  isSyncingGroup = null;
   window.removeEventListener('sync-enqueued', handleSyncEnqueued);
 }
 
