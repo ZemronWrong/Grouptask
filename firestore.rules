@@ -102,8 +102,11 @@ service cloud.firestore {
         // Admins can do anything
         isGroupAdmin(resource.data.groupId) ||
         (
-          // Members may only update their own assigned card...
-          resource.data.assignedTo == request.auth.uid &&
+          // Members may update if they are ALREADY the assignee, OR they are self-assigning an unassigned task
+          (
+            resource.data.assignedTo == (resource.data.groupId + '_' + request.auth.uid) ||
+            (resource.data.assignedTo == null && request.resource.data.assignedTo == (resource.data.groupId + '_' + request.auth.uid))
+          ) &&
           // ...and may NOT move directly to 'done' (must go through approval)
           request.resource.data.status != 'done' &&
           // ...and may NOT change the weight (protects score integrity)

@@ -128,8 +128,18 @@ export async function flushQueue() {
         }
         await removeSyncQueueItem(entry.id);
       } catch (err) {
-        console.warn('[Sync] Failed to push entry, will retry:', err.message);
-        break;
+        console.warn('[Sync] Failed to push entry:', err.message);
+        // "Poison Pill" Prevention:
+        // If the server explicitly rejects the write due to security rules,
+        // we MUST remove it from the queue, otherwise it will permanently
+        // deadlock all future sync operations.
+        if (err.code === 'permission-denied') {
+          console.error('[Sync] Permanent rejection. Removing invalid item from queue to prevent deadlock.');
+          await removeSyncQueueItem(entry.id);
+        } else {
+          // Transient error (e.g. network drop mid-flight). Break and retry later.
+          break;
+        }
       }
     }
   } finally {
