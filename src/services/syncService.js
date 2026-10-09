@@ -65,14 +65,49 @@ export function stopSync() {
   window.removeEventListener('sync-enqueued', handleSyncEnqueued);
 }
 
+/**
+ * Converts any Firestore Timestamp objects in a document back to plain
+ * millisecond numbers so conflict resolution comparisons work correctly.
+ *
+ * When flushQueue() uploads a doc it replaces createdAt/updatedAt with
+ * serverTimestamp(). Firestore stores them and returns them via onSnapshot
+ * as Timestamp objects ({ seconds, nanoseconds }). Comparing an object to
+ * a plain number with >= is always false in JS, so without this conversion
+ * the conflict resolver would ALWAYS pick 'local' and remote changes would
+ * never reach the other user's screen.
+ */
+function normalizeTimestamps(doc) {
+  const TS_FIELDS = ['createdAt', 'updatedAt', 'completedAt', 'joinedAt'];
+  const result = { ...doc };
+  for (const field of TS_FIELDS) {
+    const val = result[field];
+    if (val && typeof val === 'object') {
+      if (typeof val.toMillis === 'function') {
+        result[field] = val.toMillis();
+      } else if (typeof val.seconds === 'number') {
+        result[field] = val.seconds * 1000;
+      }
+    }
+  }
+  return result;
+}
+
 function listenForChanges(groupId) {
-  const collections = ['tasks', 'members', 'peerRatings', 'peerReviews', 'badges', 'points', 'proofSubmissions', 'events'];
+  // Bug fix: 'comments' was missing here — User B never received comments from Firestore.
+  const collections = [
+    'tasks', 'members', 'peerRatings', 'peerReviews',
+    'badges', 'points', 'proofSubmissions', 'events', 'comments',
+  ];
 
   for (const colName of collections) {
     const q = query(fsCollection(fsDb, colName), where('groupId', '==', groupId));
     const unsub = onSnapshot(q, (snapshot) => {
       snapshot.docChanges().forEach(async (change) => {
-        const remoteDoc = { id: change.doc.id, ...change.doc.data() };
+        // Normalize Firestore Timestamp objects → ms numbers BEFORE conflict resolution.
+        // Without this, serverTimestamp() fields come back as { seconds, nanoseconds }
+        // and the >= comparison in resolveConflict always returns false (object vs number),
+        // so 'remote' never wins and the other user's screen never updates.
+        const remoteDoc = normalizeTimestamps({ id: change.doc.id, ...change.doc.data() });
         const storeName = storeForCollection(colName);
 
         if (change.type === 'removed') {
@@ -157,14 +192,15 @@ export async function flushQueue() {
 
 function storeForCollection(col) {
   const map = {
-    tasks:       STORES.TASKS,
-    members:     STORES.MEMBERS,
-    peerRatings: STORES.PEER_RATINGS,
-    peerReviews: STORES.PEER_REVIEWS,
-    badges:      STORES.BADGES,
-    points:      STORES.POINTS,
+    tasks:            STORES.TASKS,
+    members:          STORES.MEMBERS,
+    peerRatings:      STORES.PEER_RATINGS,
+    peerReviews:      STORES.PEER_REVIEWS,
+    badges:           STORES.BADGES,
+    points:           STORES.POINTS,
     proofSubmissions: STORES.PROOF_SUBMISSIONS,
-    events:      STORES.EVENTS,
+    events:           STORES.EVENTS,
+    comments:         STORES.COMMENTS,  // Bug fix: was missing, causing silent IndexedDB write failures
   };
   return map[col] || col;
 }
