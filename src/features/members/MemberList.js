@@ -5,6 +5,8 @@ import { getTerm, getRoleName } from '../../services/themeService.js';
 import { notify } from '../../services/notificationService.js';
 import { navigate } from '../../services/router.js';
 import { ICONS } from '../../assets/icons/icons.js';
+import { calculateContributionScore } from '../../core/scoringEngine.js';
+import { calculatePEScore } from '../../core/peerEvaluationEngine.js';
 
 export async function renderMembers(groupId) {
   const app = document.getElementById('app');
@@ -12,10 +14,13 @@ export async function renderMembers(groupId) {
   const group = await get(STORES.GROUPS, groupId);
   const tasks = await getAllByIndex(STORES.TASKS, 'groupId', groupId);
   const membersList = await getAllByIndex(STORES.MEMBERS, 'groupId', groupId);
+  const peerReviews = await getAllByIndex(STORES.PEER_REVIEWS, 'groupId', groupId);
 
   const me = membersList.find(m => m.uid === user.uid);
   const isAdmin = me?.role === 'owner' || me?.role === 'co-admin';
   const isOwner = me?.role === 'owner';
+
+  const n = membersList.length; // Group member count for RCI formula
 
   // Analysis variables
   let highestRisk = 0;
@@ -24,7 +29,7 @@ export async function renderMembers(groupId) {
     const completed = assigned.filter((t) => t.status === 'done');
     const overdue = assigned.filter((t) => t.deadline && new Date(t.deadline) < new Date() && t.status !== 'done');
     
-    // Simple heuristic risk score
+    // Simple heuristic risk score (unchanged — used for risk label colour)
     let riskScore = 0;
     if (assigned.length > 0) {
       if (completed.length === 0) riskScore += 50;
@@ -33,11 +38,26 @@ export async function renderMembers(groupId) {
     } else {
       riskScore = 10; // no tasks assigned
     }
-    
     if (m.restricted) riskScore += 100; // Flagged manually
-
     if (riskScore > highestRisk) highestRisk = riskScore;
-    return { member: m, assigned: assigned.length, completed: completed.length, overdue: overdue.length, riskScore, restricted: !!m.restricted };
+
+    // Real PE score using Chapter 3 manuscript formulation
+    const cs = calculateContributionScore(tasks, m.id);
+    const memberRatings = peerReviews
+      .filter(pr => pr.evaluateeId === m.id)
+      .map(pr => ({ rating: pr.score }));
+    const pe = calculatePEScore(cs.completedWeight, cs.groupDoneWeight, n, memberRatings);
+
+    return {
+      member: m,
+      assigned: assigned.length,
+      completed: completed.length,
+      overdue: overdue.length,
+      riskScore,
+      restricted: !!m.restricted,
+      wps: cs.score,           // WPS percentage for display
+      pe,                       // Full PE result object
+    };
   });
 
   app.innerHTML = `
@@ -61,7 +81,7 @@ export async function renderMembers(groupId) {
           <div class="members-grid">
             ${analysisData
               .sort((a, b) => b.riskScore - a.riskScore)
-              .map((data) => memberCardHTML(data, highestRisk, isAdmin, isOwner, me, groupId))
+              .map((data) => memberCardHTML(data, highestRisk, isAdmin, isOwner, me, groupId, n))
               .join('')}
           </div>
         </div>
@@ -73,8 +93,8 @@ export async function renderMembers(groupId) {
   bindMemberEvents(groupId, membersList);
 }
 
-function memberCardHTML(data, maxRisk, isAdmin, isOwner, me, groupId) {
-  const { member, assigned, completed, overdue, riskScore, restricted } = data;
+function memberCardHTML(data, maxRisk, isAdmin, isOwner, me, groupId, n) {
+  const { member, assigned, completed, overdue, riskScore, restricted, wps, pe } = data;
   const isHighRisk = riskScore >= 50;
   
   let riskLabel = 'Active & Engaged';
@@ -124,6 +144,26 @@ function memberCardHTML(data, maxRisk, isAdmin, isOwner, me, groupId) {
       <div class="risk-bar-container">
         <div style="display:flex; justify-content:space-between; margin-bottom:4px; font-size:0.75rem;">
           <span style="color:${riskColor}; font-family:var(--font-heading); font-weight:bold;">${riskLabel}</span>
+        </div>
+      </div>
+
+      <!-- PE Score panel (Chapter 3 manuscript formulation) -->
+      <div style="margin-top:12px; padding:10px 12px; background:var(--bg); border-radius:8px; border:1px solid var(--border); font-size:0.8rem;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+          <span style="font-family:var(--font-heading); color:var(--text-secondary); text-transform:uppercase; font-size:0.7rem; letter-spacing:0.05em;">WPS Share</span>
+          <span style="font-family:var(--font-heading); font-weight:700; color:var(--accent);">${wps.toFixed(1)}%</span>
+        </div>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+          <span style="font-family:var(--font-heading); color:var(--text-secondary); text-transform:uppercase; font-size:0.7rem; letter-spacing:0.05em;">PE Score</span>
+          <span style="font-family:var(--font-heading); font-weight:700; color:var(--primary); font-size:1rem;">${pe.peScore.toFixed(1)}<span style="font-size:0.65rem; font-weight:400;">/100</span></span>
+        </div>
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <span style="font-family:var(--font-heading); color:var(--text-muted); font-size:0.68rem;">
+            ${pe.ratingsStatus === 'has_ratings'
+              ? `C<sub>i</sub>: ${pe.ciComponent.toFixed(1)} | Peer: ${pe.peerComponent.toFixed(1)} (${pe.ratingCount} ratings)`
+              : `Task-Based Only — ${pe.ratingCount < 2 ? `${pe.ratingCount} of 2 peer ratings received` : 'No ratings yet'}`
+            }
+          </span>
         </div>
       </div>
 

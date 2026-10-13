@@ -1,5 +1,7 @@
 import { STORES, get, getAllByIndex, put, addToSyncQueue } from '../../services/indexedDBService.js';
 import { calculateBoardPoints, recordEvent, EVENT_TYPES } from '../../core/eventEngine.js';
+import { calculateAllContributionScores } from '../../core/scoringEngine.js';
+import { calculateAllPEScores } from '../../core/peerEvaluationEngine.js';
 import { escapeHtml, generateId } from '../../utils/helpers.js';
 import { currentUser } from '../../services/authService.js';
 import { sidebarHTML, bindSidebarEvents } from '../members/MemberList.js';
@@ -16,6 +18,18 @@ export async function renderLeaderboard(groupId) {
   const badges = await getAllByIndex(STORES.BADGES, 'groupId', groupId);
   const peerReviews = await getAllByIndex(STORES.PEER_REVIEWS, 'groupId', groupId);
 
+  // Compute WPS and PE scores for all members using Chapter 3 formulation
+  const memberIds = members.map(m => m.id);
+  const n = members.length;
+  const csMap = calculateAllContributionScores(tasks, memberIds);
+  const ratingsMap = {};
+  for (const m of members) {
+    ratingsMap[m.id] = peerReviews
+      .filter(pr => pr.evaluateeId === m.id)
+      .map(pr => ({ rating: pr.score }));
+  }
+  const peMap = calculateAllPEScores(csMap, ratingsMap, n);
+
   // Compute Board Points concurrently for all members
   const memberPoints = await Promise.all(
     members.map(async m => {
@@ -30,6 +44,8 @@ export async function renderLeaderboard(groupId) {
         avgScore,
         reviewCount: mReviews.length,
         badges: badges.filter(b => b.memberId === m.id),
+        wps: csMap[m.id]?.score ?? 0,
+        pe:  peMap[m.id] ?? { peScore: 0, ratingsStatus: 'task_based_only', ratingCount: 0, ciComponent: 0 },
       };
     })
   );
@@ -71,8 +87,9 @@ export async function renderLeaderboard(groupId) {
               <div>Rank</div>
               <div>Member</div>
               <div>Board Points (BP)</div>
+              <div>WPS Share</div>
+              <div>PE Score</div>
               <div>Peer Avg</div>
-              <div>Reviews</div>
               <div>Board Badges</div>
             </div>
             ${rest.map((m, i) => `
@@ -82,8 +99,14 @@ export async function renderLeaderboard(groupId) {
                   <span style="font-family:var(--font-heading); font-weight:600; color:var(--text);">${escapeHtml(m.displayName)}</span>
                 </div>
                 <div style="font-family:var(--font-heading); font-weight:bold; color:var(--accent);">${m.boardPoints}</div>
+                <div style="font-family:var(--font-heading); font-weight:600; color:var(--accent);">${m.wps.toFixed(1)}%</div>
+                <div style="font-family:var(--font-heading); font-weight:700; color:var(--primary);">
+                  ${m.pe.peScore.toFixed(1)}/100
+                  <div style="font-size:0.65rem; color:var(--text-muted); font-family:var(--font-body); font-weight:400;">
+                    ${m.pe.ratingsStatus === 'has_ratings' ? `${m.pe.ratingCount} peer ratings` : 'Task-based only'}
+                  </div>
+                </div>
                 <div style="color:var(--text-secondary);">${m.avgScore.toFixed(1)} / 5.0</div>
-                <div style="color:var(--text-secondary);">${m.reviewCount}</div>
                 <div style="display:flex; gap:4px; flex-wrap:wrap;">
                   ${m.badges.map(b => `<span title="Achievement" style="font-size:1.2rem;">🏅</span>`).join('')}
                 </div>
