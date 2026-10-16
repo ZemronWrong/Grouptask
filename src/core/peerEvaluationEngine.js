@@ -157,7 +157,9 @@ export function calculatePEScore(completedWeight, groupDoneWeight, groupMemberCo
   return {
     peScore,
     rci,
+    ci:            Math.round(ci * 100) / 100,
     ciComponent:   Math.round(ci * 100) / 100,
+    csComponent,
     peerComponent,
     avgPeerRating: avg,
     ratingCount:   m_i,

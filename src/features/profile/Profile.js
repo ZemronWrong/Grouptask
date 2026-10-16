@@ -9,7 +9,7 @@ import { navigate } from '../../services/router.js';
 import { getXPLevel, calculateStreak } from '../../core/gamificationEngine.js';
 import { calculateGlobalXP, calculateTotalReputation } from '../../core/eventEngine.js';
 import { getRepProgress, isFreeloader } from '../../core/reputationEngine.js';
-import { getBadgeProgress, STREAK_BADGES, COMMENT_BADGES, CARD_BADGES, HIDDEN_BADGES, PEER_NOMINATED_BADGES } from '../../core/badgeEngine.js';
+import { getBadgeProgress, getAllBadges } from '../../core/badgeEngine.js';
 import { getRoleName } from '../../services/themeService.js';
 import { ICONS } from '../../assets/icons/icons.js';
 
@@ -32,6 +32,7 @@ export async function renderProfile() {
   const allTasks = await getAll(STORES.TASKS);
   const allBadges = await getAll(STORES.BADGES);
   const allReviews = await getAll(STORES.PEER_REVIEWS);
+  const allComments = await getAll(STORES.COMMENTS);
 
   // New Global Scoring
   const totalXP = await calculateGlobalXP(user.uid);
@@ -53,9 +54,12 @@ export async function renderProfile() {
     totalCompleted += groupTasks.filter(t => t.assignedTo === mm.id && t.status === 'done').length;
     const streakInfo = calculateStreak(groupTasks, mm.id);
     if (streakInfo.currentStreak > totalStreak) totalStreak = streakInfo.currentStreak;
-    const memberBadges = allBadges.filter(b => b.memberId === mm.id);
-    memberBadges.forEach(b => earnedBadgeTypes.add(b.type));
+    const memberBadges = allBadges.filter(b => b.memberId === mm.id || b.uid === user.uid);
+    memberBadges.forEach(b => earnedBadgeTypes.add(b.type || b.id));
   }
+
+  // Count user's comments across tasks
+  const totalComments = allComments.filter(c => c.authorId === user.uid || myMembers.some(m => m.id === c.authorId)).length;
 
   // Peer rating average
   let totalRatingSum = 0;
@@ -68,10 +72,10 @@ export async function renderProfile() {
   const memberSince = myMembers.length > 0 ? new Date(Math.min(...myMembers.map(m => m.joinedAt || Date.now()))).toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) : 'N/A';
   const primaryRole = myMembers.length > 0 ? myMembers[0].role || 'member' : 'member';
 
-  const badgeStats = getBadgeProgress({ streakDays: totalStreak, commentCount: 0 /* simplified */, cardCount: totalCompleted });
+  const badgeStats = getBadgeProgress({ streakDays: totalStreak, commentCount: totalComments, cardCount: totalCompleted });
   
-  // Collect all profile badges to render
-  const ALL_PROFILE_BADGES = [...STREAK_BADGES, ...COMMENT_BADGES, ...CARD_BADGES, ...PEER_NOMINATED_BADGES, ...HIDDEN_BADGES];
+  // Collect all system badges with descriptions and instructions
+  const allBadgesList = getAllBadges();
 
   const recentTasks = allTasks
     .filter(t => myMembers.some(m => m.id === t.assignedTo) && t.status === 'done' && t.completedAt)
@@ -166,20 +170,103 @@ export async function renderProfile() {
       </div>
 
       <div class="profile-section">
-        <h3 class="profile-section-title">🏅 Global Badges</h3>
-        <div class="profile-badges-grid">
-          ${ALL_PROFILE_BADGES.map(b => {
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:16px;">
+          <div>
+            <h3 class="profile-section-title" style="margin-bottom:4px;">🏅 Badges & Achievements</h3>
+            <p style="color:var(--text-secondary); font-size:0.85rem; margin:0;">
+              Earn badges by completing tasks, maintaining streaks, participating in discussions, and excelling in teamwork.
+            </p>
+          </div>
+          <span style="font-family:var(--font-heading); font-size:0.85rem; color:var(--accent); background:var(--bg-card); padding:6px 14px; border-radius:12px; border:1px solid var(--border); box-shadow:var(--shadow-sm);">
+            ${earnedBadgeTypes.size} / ${allBadgesList.length} Unlocked
+          </span>
+        </div>
+
+        <!-- Filter tabs -->
+        <div class="badge-filter-nav" id="badge-filter-nav">
+          <button class="badge-filter-btn active" data-filter="all">All <span class="badge-filter-count">${allBadgesList.length}</span></button>
+          <button class="badge-filter-btn" data-filter="Streaks">⚡ Streaks <span class="badge-filter-count">${allBadgesList.filter(b => b.category === 'Streaks').length}</span></button>
+          <button class="badge-filter-btn" data-filter="Tasks">🎯 Tasks <span class="badge-filter-count">${allBadgesList.filter(b => b.category === 'Tasks').length}</span></button>
+          <button class="badge-filter-btn" data-filter="Discussions">💬 Discussions <span class="badge-filter-count">${allBadgesList.filter(b => b.category === 'Discussions').length}</span></button>
+          <button class="badge-filter-btn" data-filter="Board">🏁 Board & Project <span class="badge-filter-count">${allBadgesList.filter(b => b.category === 'Board').length}</span></button>
+          <button class="badge-filter-btn" data-filter="Peer">🤝 Peer <span class="badge-filter-count">${allBadgesList.filter(b => b.category === 'Peer').length}</span></button>
+          <button class="badge-filter-btn" data-filter="Secret">🔒 Secret <span class="badge-filter-count">${allBadgesList.filter(b => b.category === 'Secret').length}</span></button>
+        </div>
+
+        <div class="profile-badges-cards-grid" id="badge-cards-container">
+          ${allBadgesList.map(b => {
             const earned = earnedBadgeTypes.has(b.id);
-            if (b.hidden && !earned) return ''; // Hide locked secret badges
-            
+            let progressHtml = '';
+
+            if (!earned) {
+              if (b.category === 'Streaks') {
+                const pct = Math.min(100, Math.round((totalStreak / b.days) * 100));
+                progressHtml = `
+                  <div class="badge-progress-wrap">
+                    <div class="badge-progress-header">
+                      <span>Progress</span>
+                      <span>${totalStreak} / ${b.days} days (${pct}%)</span>
+                    </div>
+                    <div class="progress-bar" style="height:6px;">
+                      <div class="progress-fill" style="width:${pct}%;"></div>
+                    </div>
+                  </div>
+                `;
+              } else if (b.category === 'Tasks') {
+                const pct = Math.min(100, Math.round((totalCompleted / b.count) * 100));
+                progressHtml = `
+                  <div class="badge-progress-wrap">
+                    <div class="badge-progress-header">
+                      <span>Progress</span>
+                      <span>${totalCompleted} / ${b.count} tasks (${pct}%)</span>
+                    </div>
+                    <div class="progress-bar" style="height:6px;">
+                      <div class="progress-fill" style="width:${pct}%;"></div>
+                    </div>
+                  </div>
+                `;
+              } else if (b.category === 'Discussions') {
+                const pct = Math.min(100, Math.round((totalComments / b.count) * 100));
+                progressHtml = `
+                  <div class="badge-progress-wrap">
+                    <div class="badge-progress-header">
+                      <span>Progress</span>
+                      <span>${totalComments} / ${b.count} comments (${pct}%)</span>
+                    </div>
+                    <div class="progress-bar" style="height:6px;">
+                      <div class="progress-fill" style="width:${pct}%;"></div>
+                    </div>
+                  </div>
+                `;
+              }
+            }
+
             return `
-              <div class="profile-badge ${earned ? 'earned' : 'locked'}" title="${b.description}">
-                <span class="profile-badge-icon">${earned ? '🏆' : '🔒'}</span>
-                <div style="display:flex; flex-direction:column; align-items:center; gap:4px;">
-                  <span class="profile-badge-label">${b.label}</span>
-                  ${!earned && b.id.startsWith('streak_') ? `<div class="progress-bar" style="width:100%; height:4px;"><div class="progress-fill" style="width:${badgeStats.streak.pct}%;"></div></div>` : ''}
-                  ${!earned && b.id.startsWith('card_') ? `<div class="progress-bar" style="width:100%; height:4px;"><div class="progress-fill" style="width:${badgeStats.card.pct}%;"></div></div>` : ''}
+              <div class="badge-card ${earned ? 'badge-earned' : 'badge-locked'}" data-category="${b.category}">
+                <div class="badge-card-header">
+                  <div class="badge-card-icon-wrap">
+                    <span class="badge-card-icon">${earned ? b.icon : (b.hidden ? '❓' : b.icon)}</span>
+                  </div>
+                  <div class="badge-card-title-wrap">
+                    <div class="badge-card-top-meta">
+                      <span class="badge-category-pill">${b.category}</span>
+                      ${earned
+                        ? `<span class="badge-status-pill earned">✓ Earned</span>`
+                        : (progressHtml ? `<span class="badge-status-pill in-progress">In Progress</span>` : `<span class="badge-status-pill locked">🔒 Locked</span>`)
+                      }
+                    </div>
+                    <h4 class="badge-card-name">${b.hidden && !earned ? 'Secret Badge' : escapeHtml(b.label)}</h4>
+                  </div>
                 </div>
+
+                <p class="badge-card-desc">${b.hidden && !earned ? (b.hint || 'A mysterious hidden achievement.') : escapeHtml(b.description)}</p>
+
+                <div class="badge-how-box">
+                  <span class="badge-how-title">🎯 How to get:</span>
+                  <span class="badge-how-text">${b.hidden && !earned ? 'Perform specific secret actions during group work to discover and unlock.' : escapeHtml(b.howToGet)}</span>
+                </div>
+
+                ${progressHtml}
               </div>
             `;
           }).join('')}
@@ -206,6 +293,24 @@ export async function renderProfile() {
       </div>
     </div>
   `;
+
+  // Category filter handlers
+  const filterBtns = document.querySelectorAll('.badge-filter-btn');
+  const badgeCards = document.querySelectorAll('.badge-card');
+  filterBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      filterBtns.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const filter = btn.getAttribute('data-filter');
+      badgeCards.forEach(card => {
+        if (filter === 'all' || card.getAttribute('data-category') === filter) {
+          card.style.display = 'flex';
+        } else {
+          card.style.display = 'none';
+        }
+      });
+    });
+  });
 
   document.getElementById('btn-profile-back').addEventListener('click', () => navigate('#/dashboard'));
   document.getElementById('btn-edit-profile').addEventListener('click', () => navigate('#/settings'));

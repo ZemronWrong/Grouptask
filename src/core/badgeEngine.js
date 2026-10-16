@@ -25,11 +25,11 @@ import { isFreeloader } from './reputationEngine.js';
  * Named after fire intensity because sustained daily effort is hard to fake.
  */
 export const STREAK_BADGES = [
-  { id: 'streak_spark',     label: 'Spark',     days: 3,  description: '3-day streak — you\'ve started something',      hidden: false },
-  { id: 'streak_ember',     label: 'Ember',     days: 7,  description: '7-day streak — one full week of momentum',      hidden: false },
-  { id: 'streak_wildfire',  label: 'Wildfire',  days: 14, description: '14-day streak — two weeks of sustained output', hidden: false },
-  { id: 'streak_firestorm', label: 'Firestorm', days: 30, description: '30-day streak — a full month of dedication',    hidden: false },
-  { id: 'streak_undying',   label: 'Undying',   days: 60, description: '60-day streak — rare and remarkable',          hidden: false },
+  { id: 'streak_spark',     label: 'Spark',     icon: '⚡', days: 3,  category: 'Streaks',     description: '3-day streak — you\'ve started something',      howToGet: 'Complete tasks or contribute for 3 consecutive days in a row.', hidden: false },
+  { id: 'streak_ember',     label: 'Ember',     icon: '🔥', days: 7,  category: 'Streaks',     description: '7-day streak — one full week of momentum',      howToGet: 'Maintain an unbroken daily activity streak for 7 consecutive days (1 full week).', hidden: false },
+  { id: 'streak_wildfire',  label: 'Wildfire',  icon: '🌋', days: 14, category: 'Streaks',     description: '14-day streak — two weeks of sustained output', howToGet: 'Maintain an unbroken daily activity streak for 14 consecutive days (2 weeks).', hidden: false },
+  { id: 'streak_firestorm', label: 'Firestorm', icon: '☄️', days: 30, category: 'Streaks',     description: '30-day streak — a full month of dedication',    howToGet: 'Maintain an unbroken daily activity streak for 30 consecutive days (1 full month).', hidden: false },
+  { id: 'streak_undying',   label: 'Undying',   icon: '🌟', days: 60, category: 'Streaks',     description: '60-day streak — rare and remarkable',          howToGet: 'Maintain an unbroken daily activity streak for 60 consecutive days.', hidden: false },
 ];
 
 /**
@@ -37,18 +37,18 @@ export const STREAK_BADGES = [
  * to write 50+ useful comments — this isn't rewarding noise.
  */
 export const COMMENT_BADGES = [
-  { id: 'keyboard_i',   label: 'Keyboard Warrior I',   count: 10,  description: '10 comments posted',  hidden: false },
-  { id: 'keyboard_ii',  label: 'Keyboard Warrior II',  count: 50,  description: '50 comments posted',  hidden: false },
-  { id: 'keyboard_iii', label: 'Keyboard Warrior III', count: 200, description: '200 comments posted', hidden: false },
+  { id: 'keyboard_i',   label: 'Keyboard Warrior I',   icon: '💬', count: 10,  category: 'Discussions', description: '10 comments posted',  howToGet: 'Post at least 10 comments across task discussions.', hidden: false },
+  { id: 'keyboard_ii',  label: 'Keyboard Warrior II',  icon: '🗣️', count: 50,  category: 'Discussions', description: '50 comments posted',  howToGet: 'Post at least 50 comments across task discussions.', hidden: false },
+  { id: 'keyboard_iii', label: 'Keyboard Warrior III', icon: '📢', count: 200, category: 'Discussions', description: '200 comments posted', howToGet: 'Post at least 200 comments across task discussions.', hidden: false },
 ];
 
 /**
  * Task completion volume badges (global, cross-board).
  */
 export const CARD_BADGES = [
-  { id: 'card_i',   label: 'Card Master I',   count: 5,   description: '5 tasks completed globally',   hidden: false },
-  { id: 'card_ii',  label: 'Card Master II',  count: 25,  description: '25 tasks completed globally',  hidden: false },
-  { id: 'card_iii', label: 'Card Master III', count: 100, description: '100 tasks completed globally', hidden: false },
+  { id: 'card_i',   label: 'Card Master I',   icon: '🎯', count: 5,   category: 'Tasks', description: '5 tasks completed globally',   howToGet: 'Complete and finish 5 tasks across any project boards.', hidden: false },
+  { id: 'card_ii',  label: 'Card Master II',  icon: '⚔️', count: 25,  category: 'Tasks', description: '25 tasks completed globally',  howToGet: 'Complete and finish 25 tasks across any project boards.', hidden: false },
+  { id: 'card_iii', label: 'Card Master III', icon: '👑', count: 100, category: 'Tasks', description: '100 tasks completed globally', howToGet: 'Complete and finish 100 tasks across any project boards.', hidden: false },
 ];
 
 /**
@@ -56,14 +56,14 @@ export const CARD_BADGES = [
  * Not auto-awarded — requires active recognition from the peer community.
  */
 export const PEER_NOMINATED_BADGES = [
-  { id: 'most_helpful',      label: 'Most Helpful',      description: 'Peer-nominated for outstanding helpfulness',    hidden: false },
-  { id: 'best_collaborator', label: 'Best Collaborator', description: 'Peer-nominated for exceptional collaboration',  hidden: false },
+  { id: 'most_helpful',      label: 'Most Helpful',      icon: '🤝', category: 'Peer', description: 'Peer-nominated for outstanding helpfulness',    howToGet: 'Be nominated by teammates for outstanding helpfulness during peer evaluation.', hidden: false },
+  { id: 'best_collaborator', label: 'Best Collaborator', icon: '👥', category: 'Peer', description: 'Peer-nominated for exceptional collaboration',  howToGet: 'Be nominated by teammates for exceptional teamwork and collaboration during peer evaluation.', hidden: false },
 ];
 
 /** Hidden badges — visible only after unlocking. Shown as "?" until earned. */
 export const HIDDEN_BADGES = [
-  { id: 'night_owl',  label: 'Night Owl',  description: 'Completed a task between 11 PM and 4 AM', hidden: true },
-  { id: 'early_bird', label: 'Early Bird', description: 'Completed a task before 7 AM',            hidden: true },
+  { id: 'night_owl',  label: 'Night Owl',  icon: '🦉', category: 'Secret', description: 'Completed a task between 11 PM and 4 AM', howToGet: 'Complete and finish any task between 11:00 PM and 4:00 AM.', hint: 'Late-night productivity secret', hidden: true },
+  { id: 'early_bird', label: 'Early Bird', icon: '🌅', category: 'Secret', description: 'Completed a task before 7 AM',            howToGet: 'Complete and finish any task before 7:00 AM.',            hint: 'Early-morning dedication secret', hidden: true },
 ];
 
 // ── Board Badge Definitions ───────────────────────────────────────────────────
@@ -76,13 +76,19 @@ export const BOARD_BADGES = [
   {
     id: 'project_finisher',
     label: 'Project Finisher',
+    icon: '🏁',
+    category: 'Board',
     description: 'Completed at least one task before the project closed',
+    howToGet: 'Complete at least 1 task on a project board before the project is completed.',
     checkFn: ({ completedCount }) => completedCount >= 1,
   },
   {
     id: 'deadline_master',
     label: 'Deadline Master',
+    icon: '⏱️',
+    category: 'Board',
     description: 'All personal tasks completed before their deadlines',
+    howToGet: 'Complete all of your assigned tasks on the board on or before their deadlines.',
     checkFn: ({ tasks, memberId }) => {
       const mine = tasks.filter((t) => t.assignedTo === memberId && t.status === 'done' && t.deadline);
       return mine.length > 0 && mine.every((t) => t.completedAt && t.completedAt < new Date(t.deadline).getTime());
@@ -91,19 +97,28 @@ export const BOARD_BADGES = [
   {
     id: 'team_player',
     label: 'Team Player',
+    icon: '🎖️',
+    category: 'Board',
     description: 'Received an average peer evaluation of 4.0 or above on this board',
+    howToGet: 'Receive an average peer rating score of 4.0 / 5.0 or higher from your teammates on this board.',
     checkFn: ({ avgPeerScore }) => avgPeerScore >= 4.0,
   },
   {
     id: 'no_free_loader',
     label: 'No Free Loader',
+    icon: '🛡️',
+    category: 'Board',
     description: 'Contribution score ≥ 70% at project completion',
+    howToGet: 'Achieve a Work Package Share (WPS) contribution score of 70% or higher at project completion.',
     checkFn: ({ contributionScore }) => contributionScore >= 70,
   },
   {
     id: 'documentation_hero',
     label: 'Documentation Hero',
+    icon: '📚',
+    category: 'Board',
     description: 'Completed 2 or more high-weight tasks with proof links',
+    howToGet: 'Complete 2 or more high-weight tasks (weight ≥ 7) with approved proof submission links.',
     checkFn: ({ tasks, memberId, proofs }) => {
       const withProof = tasks.filter((t) =>
         t.assignedTo === memberId &&
@@ -117,13 +132,19 @@ export const BOARD_BADGES = [
   {
     id: 'code_reviewer',
     label: 'Code Reviewer',
+    icon: '🔍',
+    category: 'Board',
     description: 'Approved or rejected 3 or more proof submissions as an admin',
+    howToGet: 'Review and approve/reject 3 or more proof submissions as a board administrator.',
     checkFn: ({ reviewCount }) => reviewCount >= 3,
   },
   {
     id: 'bug_squasher',
     label: 'Bug Squasher',
+    icon: '🐛',
+    category: 'Board',
     description: 'Completed tasks tagged as bugs',
+    howToGet: 'Complete and finish at least 1 task with the "bug" tag on the board.',
     checkFn: ({ tasks, memberId }) =>
       tasks.some((t) => t.assignedTo === memberId && t.status === 'done' && t.tags?.includes('bug')),
   },
@@ -247,8 +268,33 @@ export function getBadgeProgress(stats) {
   const cardNext    = CARD_BADGES.find((b)    => cardCount   < b.count)  || CARD_BADGES.at(-1);
 
   return {
-    streak:  { current: streakDays,   needed: streakNext.days,   nextLabel: streakNext.label,  pct: Math.min(100, Math.round((streakDays  / streakNext.days)   * 100)) },
-    comment: { current: commentCount, needed: commentNext.count, nextLabel: commentNext.label, pct: Math.min(100, Math.round((commentCount / commentNext.count) * 100)) },
-    card:    { current: cardCount,    needed: cardNext.count,    nextLabel: cardNext.label,    pct: Math.min(100, Math.round((cardCount    / cardNext.count)    * 100)) },
+    streak:  { current: streakDays,   needed: streakNext?.days || 3,   nextLabel: streakNext?.label || 'Spark',  pct: Math.min(100, Math.round((streakDays  / (streakNext?.days || 1))   * 100)) },
+    comment: { current: commentCount, needed: commentNext?.count || 10, nextLabel: commentNext?.label || 'Keyboard Warrior I', pct: Math.min(100, Math.round((commentCount / (commentNext?.count || 1)) * 100)) },
+    card:    { current: cardCount,    needed: cardNext?.count || 5,    nextLabel: cardNext?.label || 'Card Master I',    pct: Math.min(100, Math.round((cardCount    / (cardNext?.count || 1))    * 100)) },
   };
 }
+
+/**
+ * Returns all system badges with their categories and instructions.
+ * @returns {Array<object>}
+ */
+export function getAllBadges() {
+  return [
+    ...STREAK_BADGES,
+    ...CARD_BADGES,
+    ...COMMENT_BADGES,
+    ...BOARD_BADGES,
+    ...PEER_NOMINATED_BADGES,
+    ...HIDDEN_BADGES,
+  ];
+}
+
+/**
+ * Look up any badge by its unique ID.
+ * @param {string} id
+ * @returns {object|null}
+ */
+export function getBadgeById(id) {
+  return getAllBadges().find((b) => b.id === id) || null;
+}
+

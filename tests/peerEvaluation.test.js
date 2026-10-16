@@ -152,7 +152,8 @@ describe('calculatePEScore', () => {
     // PE = 0.70×100 + 0.30×50 = 70 + 15 = 85
     const result = calculatePEScore(4, 24, 6, [{ rating: 3 }, { rating: 3 }]);
     expect(result.peScore).toBe(85);
-    expect(result.ciComponent).toBe(70);
+    expect(result.ciComponent).toBe(100);
+    expect(result.csComponent).toBe(70);
     expect(result.peerComponent).toBe(15);
   });
 });

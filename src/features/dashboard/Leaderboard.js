@@ -2,6 +2,7 @@ import { STORES, get, getAllByIndex, put, addToSyncQueue } from '../../services/
 import { calculateBoardPoints, recordEvent, EVENT_TYPES } from '../../core/eventEngine.js';
 import { calculateAllContributionScores } from '../../core/scoringEngine.js';
 import { calculateAllPEScores } from '../../core/peerEvaluationEngine.js';
+import { getBadgeById } from '../../core/badgeEngine.js';
 import { escapeHtml, generateId } from '../../utils/helpers.js';
 import { currentUser } from '../../services/authService.js';
 import { sidebarHTML, bindSidebarEvents } from '../members/MemberList.js';
@@ -108,7 +109,13 @@ export async function renderLeaderboard(groupId) {
                 </div>
                 <div style="color:var(--text-secondary);">${m.avgScore.toFixed(1)} / 5.0</div>
                 <div style="display:flex; gap:4px; flex-wrap:wrap;">
-                  ${m.badges.map(b => `<span title="Achievement" style="font-size:1.2rem;">🏅</span>`).join('')}
+                  ${m.badges.map(b => {
+                    const meta = getBadgeById(b.type || b.id);
+                    const icon = meta?.icon || '🏅';
+                    const label = meta?.label || 'Badge';
+                    const how = meta?.howToGet || meta?.description || 'Earned achievement';
+                    return `<span title="${escapeHtml(`${label} — How to get: ${how}`)}" style="font-size:1.2rem; cursor:help;">${icon}</span>`;
+                  }).join('')}
                 </div>
               </div>
             `).join('')}
