@@ -126,16 +126,19 @@ export function shareModalHTML(members, group) {
 
               ${members.map((m) => `
                 <div class="share-member-row">
-                  <div class="avatar">${escapeHtml(m.displayName?.[0] || '?')}</div>
+                  <div class="avatar" style="overflow:hidden;">
+                    ${escapeHtml(m.displayName?.[0] || '?')}
+                  </div>
                   <div class="share-member-info">
                     <span class="share-member-name">${escapeHtml(m.displayName)}</span>
                     <span class="share-member-email">${escapeHtml(m.uid)}</span>
                   </div>
-                  ${m.role === 'owner' ? `<span class="share-role-locked">OWNER</span>` : `
+                  ${m.role === 'owner' ? `<span class="share-role-locked" style="background:var(--primary-soft); color:var(--primary); padding:3px 10px; border-radius:12px; font-size:0.72rem; font-family:var(--font-heading); font-weight:700;">OWNER</span>` : `
                     <select class="share-role-select" data-member-id="${m.id}">
-                      <option value="co-admin" ${m.role === 'co-admin' ? 'selected' : ''}>CAN EDIT</option>
-                      <option value="member" ${m.role === 'member' ? 'selected' : ''}>CAN VIEW</option>
-                      <option value="remove">REMOVE</option>
+                      <option value="co-admin" ${m.role === 'co-admin' ? 'selected' : ''}>Co-owner</option>
+                      <option value="member" ${m.role === 'member' ? 'selected' : ''}>Member</option>
+                      <option value="viewer" ${m.role === 'viewer' ? 'selected' : ''}>Only View</option>
+                      <option value="remove">Remove</option>
                     </select>
                   `}
                 </div>
@@ -152,6 +155,7 @@ export function shareModalHTML(members, group) {
     </div>
   `;
 }
+
 
 export function proofReviewModalHTML() {
   return `

@@ -48,18 +48,24 @@ export async function renderProfile() {
   let totalStreak = 0;
   const earnedBadgeTypes = new Set();
   
+  // Collect all member IDs for this user across all groups
+  const myMemberIds = myMembers.map(m => m.id);
+
   // Aggregate global task stats from all groups
   for (const mm of myMembers) {
     const groupTasks = allTasks.filter(t => t.groupId === mm.groupId);
     totalCompleted += groupTasks.filter(t => t.assignedTo === mm.id && t.status === 'done').length;
     const streakInfo = calculateStreak(groupTasks, mm.id);
     if (streakInfo.currentStreak > totalStreak) totalStreak = streakInfo.currentStreak;
-    const memberBadges = allBadges.filter(b => b.memberId === mm.id || b.uid === user.uid);
-    memberBadges.forEach(b => earnedBadgeTypes.add(b.type || b.id));
   }
 
-  // Count user's comments across tasks
-  const totalComments = allComments.filter(c => c.authorId === user.uid || myMembers.some(m => m.id === c.authorId)).length;
+  // Collect earned badges — check by memberId (from all member records) AND uid
+  allBadges
+    .filter(b => myMemberIds.includes(b.memberId) || b.uid === user.uid)
+    .forEach(b => earnedBadgeTypes.add(b.type || b.id));
+
+  // Count user's comments across tasks (by all member IDs)
+  const totalComments = allComments.filter(c => myMemberIds.includes(c.memberId) && !c.deleted).length;
 
   // Peer rating average
   let totalRatingSum = 0;

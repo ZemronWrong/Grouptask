@@ -21,6 +21,7 @@ export async function renderMembers(groupId) {
   const me = membersList.find(m => m.uid === user.uid);
   const isAdmin = me?.role === 'owner' || me?.role === 'co-admin';
   const isOwner = me?.role === 'owner';
+  const isCoOwner = me?.role === 'co-admin';
 
   const n = membersList.length; // Group member count for RCI formula
 
@@ -113,7 +114,10 @@ function memberCardHTML(data, maxRisk, isAdmin, isOwner, me, groupId, n) {
   }
 
   const isMe = member.id === me?.id;
-  const canManage = (isAdmin && member.role === 'member') || (isOwner && member.role === 'co-admin');
+  // Owner can manage co-owners and below; co-owner can manage members and viewers
+  const canManage = isOwner
+    ? !isMe && member.role !== 'owner'
+    : (isAdmin && !isMe && (member.role === 'member' || member.role === 'viewer'));
 
   return `
     <div class="member-card ${isHighRisk ? 'high-risk' : ''}">

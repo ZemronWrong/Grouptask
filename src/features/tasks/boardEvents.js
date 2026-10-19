@@ -56,7 +56,7 @@ export function bindBoardEvents(boardContext, rerenderBoard) {
       return;
     }
 
-    if (e.target.closest('#btn-share')) {
+    if (e.target.closest('#btn-share') || e.target.closest('#btn-share-btn')) {
       document.getElementById('share-modal').hidden = false;
       return;
     }
@@ -93,6 +93,7 @@ export function bindBoardEvents(boardContext, rerenderBoard) {
     const selfAssignBtn = e.target.closest('.btn-self-assign');
     if (selfAssignBtn) {
       e.stopPropagation();
+      if (me?.role === 'viewer') { showToast('Only View members cannot accept tasks.'); return; }
       const task = await get(STORES.TASKS, selfAssignBtn.dataset.taskId);
       if (!task) return;
       task.assignedTo = me.id;

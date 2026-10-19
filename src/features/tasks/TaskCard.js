@@ -10,7 +10,7 @@ import { getTerm } from '../../services/themeService.js';
  * Returns the HTML string for a single task card.
  * The board delegates events, so no listeners are attached here.
  */
-export function taskCardHTML(task, members, proofs, comments, viewIsAdmin, me) {
+export function taskCardHTML(task, members, proofs, comments, viewIsAdmin, me, profileMap = {}) {
   const assignee = members.find((m) => m.id === task.assignedTo);
   const isOverdue = task.deadline && new Date(task.deadline) < new Date() && task.status !== 'done';
   const deadlineClass = isOverdue ? 'overdue' : '';
@@ -40,6 +40,28 @@ export function taskCardHTML(task, members, proofs, comments, viewIsAdmin, me) {
     ? `<span class="badge" style="background:rgba(239,68,68,0.15); color:#ef4444; border:1px solid rgba(239,68,68,0.3); font-weight:600;">🐛 Bug</span>`
     : (task.type && task.type !== 'task' ? `<span class="badge badge-subtle">${escapeHtml(task.type)}</span>` : '');
 
+  // Build assignee avatar — show photo if available
+  let assigneeAvatarHTML = '';
+  if (assignee) {
+    const prof = profileMap[assignee.uid];
+    const hasPhoto = prof?.avatarType === 'custom' && prof?.avatar;
+    assigneeAvatarHTML = `
+      <div class="task-assignee" data-member-uid="${assignee.uid}">
+        <div class="avatar" style="overflow:hidden;">
+          ${hasPhoto
+            ? `<img src="${prof.avatar}" alt="${escapeHtml(assignee.displayName?.[0] || '?')}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`
+            : escapeHtml(assignee.displayName?.[0] || '?')
+          }
+        </div>
+        <div>
+          <span class="task-assignee-label">Assigned</span>
+          <span class="task-assignee-name">${escapeHtml(assignee.displayName || assignee.uid)}</span>
+        </div>
+      </div>`;
+  } else {
+    assigneeAvatarHTML = `<span class="task-assignee-label" style="margin:0; opacity:0.6;">Unassigned</span>`;
+  }
+
   return `
     <div class="task-card ${viewIsAdmin ? 'draggable' : ''}" ${viewIsAdmin ? 'draggable="true"' : ''} data-task-id="${task.id}">
       <div class="task-card-top">
@@ -56,21 +78,13 @@ export function taskCardHTML(task, members, proofs, comments, viewIsAdmin, me) {
       ${proofBadge}
 
       <div class="task-card-bottom">
-        ${assignee ? `
-          <div class="task-assignee">
-            <div class="avatar">${escapeHtml(assignee.displayName?.[0] || '?')}</div>
-            <div>
-              <span class="task-assignee-label">Assigned</span>
-              <span class="task-assignee-name">${escapeHtml(assignee.displayName || assignee.uid)}</span>
-            </div>
-          </div>
-        ` : `<span class="task-assignee-label" style="margin:0; opacity:0.6;">Unassigned</span>`}
-
+        ${assigneeAvatarHTML}
           <span class="task-reward" style="margin-left: auto;">${task.weight || 100} ${getTerm('rewardIcon')}</span>
       </div>
     </div>
   `;
 }
+
 
 /** Brief achievement unlock popup — auto-dismisses after 5 s. */
 export function renderAchievementPopup(badge) {

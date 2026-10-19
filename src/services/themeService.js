@@ -58,7 +58,7 @@ const TERMS = {
   }
 };
 
-let currentColorTheme = localStorage.getItem(THEME_KEYS.COLOR) || 'black';
+let currentColorTheme = localStorage.getItem(THEME_KEYS.COLOR) || 'blue';
 let currentBoardTheme = localStorage.getItem(THEME_KEYS.BOARD) || 'guild';
 
 export function initTheme() {
@@ -97,7 +97,8 @@ export function getTerm(key) {
  */
 export function getRoleName(roleKey) {
   if (roleKey === 'owner') return getTerm('owner');
-  if (roleKey === 'co-admin') return getTerm('coAdmin');
+  if (roleKey === 'co-admin') return 'Co-owner';
+  if (roleKey === 'viewer') return 'Only View';
   return getTerm('member');
 }
 

@@ -3456,3 +3456,72 @@ textarea { resize: vertical; }
   from { transform: rotate(0deg); }
   to   { transform: rotate(360deg); }
 }
+
+/* ═══════════════════════════════════════════
+   MEMBER AVATAR STACK (Board Header)
+   ═══════════════════════════════════════════ */
+.member-avatar-stack {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px 4px 6px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  transition: all var(--transition);
+  cursor: pointer;
+}
+.member-avatar-stack:hover {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+}
+.avatar-stack-item {
+  border: 2px solid var(--bg) !important;
+  transition: transform var(--transition);
+}
+.member-avatar-stack:hover .avatar-stack-item {
+  transform: translateY(-2px);
+}
+
+/* ═══════════════════════════════════════════
+   MEMBER POPUP OVERLAY
+   ═══════════════════════════════════════════ */
+.member-popup-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: fadeIn 0.2s ease;
+}
+
+.member-popup {
+  position: relative;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  width: 340px;
+  max-width: 95vw;
+  box-shadow: var(--shadow-lg);
+  animation: slideUp 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(20px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* ═══════════════════════════════════════════
+   COMMENT BADGE INLINE
+   ═══════════════════════════════════════════ */
+.comment-badge-inline {
+  vertical-align: middle;
+  transition: transform var(--transition);
+}
+.comment-badge-inline:hover {
+  transform: scale(1.05);
+}
