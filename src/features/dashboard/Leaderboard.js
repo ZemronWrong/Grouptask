@@ -3,7 +3,7 @@ import { calculateBoardPoints, recordEvent, EVENT_TYPES } from '../../core/event
 import { calculateAllContributionScores } from '../../core/scoringEngine.js';
 import { calculateAllPEScores } from '../../core/peerEvaluationEngine.js';
 import { getBadgeById } from '../../core/badgeEngine.js';
-import { escapeHtml, generateId } from '../../utils/helpers.js';
+import { escapeHtml, generateId, showToast } from '../../utils/helpers.js';
 import { currentUser } from '../../services/authService.js';
 import { sidebarHTML, bindSidebarEvents } from '../members/MemberList.js';
 import { getTerm } from '../../services/themeService.js';
@@ -319,14 +319,6 @@ export async function renderLeaderboard(groupId) {
       });
     }
   }, 0);
-}
-
-function showToast(msg) {
-  const t = document.createElement('div');
-  t.className = 'toast';
-  t.textContent = msg;
-  document.body.appendChild(t);
-  setTimeout(() => t.remove(), 2500);
 }
 
 export async function renderEvaluation(groupId) {

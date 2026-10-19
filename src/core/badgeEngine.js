@@ -312,6 +312,21 @@ export function getBadgeById(id) {
   return getAllBadges().find((b) => b.id === id) || null;
 }
 
+async function saveAndQueueBadge(badge, memberId, groupId, userId, earnedBadgeTypes, newlyAwarded) {
+  earnedBadgeTypes.add(badge.id);
+  const badgeDoc = {
+    id: generateId(),
+    memberId,
+    groupId,
+    uid: userId,
+    type: badge.id,
+    earnedAt: Date.now()
+  };
+  await put(STORES.BADGES, badgeDoc);
+  await addToSyncQueue({ collection: 'badges', docId: badgeDoc.id, operation: 'add', data: badgeDoc });
+  newlyAwarded.push(badge);
+}
+
 /**
  * Evaluates all eligible badges for a user across all their tasks, streaks, comments,
  * and boards, persisting any newly awarded badges to IndexedDB and the sync queue.
@@ -338,6 +353,9 @@ export async function awardEligibleBadgesForUser(userId) {
     );
 
     const newlyAwarded = [];
+    const defaultMember = myMembers[0];
+    const fallbackMemberId = defaultMember?.id || userId;
+    const fallbackGroupId = defaultMember?.groupId || null;
 
     // 1. Evaluate board badges across all boards where user is a member
     for (const mm of myMembers) {
@@ -362,18 +380,7 @@ export async function awardEligibleBadgesForUser(userId) {
 
       for (const b of boardBadges) {
         if (!earnedBadgeTypes.has(b.id)) {
-          earnedBadgeTypes.add(b.id);
-          const badgeDoc = {
-            id: generateId(),
-            memberId: mm.id,
-            groupId: mm.groupId,
-            uid: userId,
-            type: b.id,
-            earnedAt: Date.now()
-          };
-          await put(STORES.BADGES, badgeDoc);
-          await addToSyncQueue({ collection: 'badges', docId: badgeDoc.id, operation: 'add', data: badgeDoc });
-          newlyAwarded.push(b);
+          await saveAndQueueBadge(b, mm.id, mm.groupId, userId, earnedBadgeTypes, newlyAwarded);
         }
       }
     }
@@ -388,19 +395,7 @@ export async function awardEligibleBadgesForUser(userId) {
     const streakBadges = evaluateStreakBadges(maxStreak, [...earnedBadgeTypes]);
     for (const b of streakBadges) {
       if (!earnedBadgeTypes.has(b.id)) {
-        earnedBadgeTypes.add(b.id);
-        const defaultMember = myMembers[0];
-        const badgeDoc = {
-          id: generateId(),
-          memberId: defaultMember?.id || userId,
-          groupId: defaultMember?.groupId || null,
-          uid: userId,
-          type: b.id,
-          earnedAt: Date.now()
-        };
-        await put(STORES.BADGES, badgeDoc);
-        await addToSyncQueue({ collection: 'badges', docId: badgeDoc.id, operation: 'add', data: badgeDoc });
-        newlyAwarded.push(b);
+        await saveAndQueueBadge(b, fallbackMemberId, fallbackGroupId, userId, earnedBadgeTypes, newlyAwarded);
       }
     }
 
@@ -412,19 +407,7 @@ export async function awardEligibleBadgesForUser(userId) {
     const cardBadges = evaluateCardBadges(totalDoneCount, [...earnedBadgeTypes]);
     for (const b of cardBadges) {
       if (!earnedBadgeTypes.has(b.id)) {
-        earnedBadgeTypes.add(b.id);
-        const defaultMember = myMembers[0];
-        const badgeDoc = {
-          id: generateId(),
-          memberId: defaultMember?.id || userId,
-          groupId: defaultMember?.groupId || null,
-          uid: userId,
-          type: b.id,
-          earnedAt: Date.now()
-        };
-        await put(STORES.BADGES, badgeDoc);
-        await addToSyncQueue({ collection: 'badges', docId: badgeDoc.id, operation: 'add', data: badgeDoc });
-        newlyAwarded.push(b);
+        await saveAndQueueBadge(b, fallbackMemberId, fallbackGroupId, userId, earnedBadgeTypes, newlyAwarded);
       }
     }
 
@@ -433,19 +416,7 @@ export async function awardEligibleBadgesForUser(userId) {
     const commentBadges = evaluateCommentBadges(totalComments, [...earnedBadgeTypes]);
     for (const b of commentBadges) {
       if (!earnedBadgeTypes.has(b.id)) {
-        earnedBadgeTypes.add(b.id);
-        const defaultMember = myMembers[0];
-        const badgeDoc = {
-          id: generateId(),
-          memberId: defaultMember?.id || userId,
-          groupId: defaultMember?.groupId || null,
-          uid: userId,
-          type: b.id,
-          earnedAt: Date.now()
-        };
-        await put(STORES.BADGES, badgeDoc);
-        await addToSyncQueue({ collection: 'badges', docId: badgeDoc.id, operation: 'add', data: badgeDoc });
-        newlyAwarded.push(b);
+        await saveAndQueueBadge(b, fallbackMemberId, fallbackGroupId, userId, earnedBadgeTypes, newlyAwarded);
       }
     }
 
@@ -454,23 +425,12 @@ export async function awardEligibleBadgesForUser(userId) {
     const hiddenBadges = evaluateHiddenBadges(userDoneTasks, [...earnedBadgeTypes]);
     for (const b of hiddenBadges) {
       if (!earnedBadgeTypes.has(b.id)) {
-        earnedBadgeTypes.add(b.id);
-        const defaultMember = myMembers[0];
-        const badgeDoc = {
-          id: generateId(),
-          memberId: defaultMember?.id || userId,
-          groupId: defaultMember?.groupId || null,
-          uid: userId,
-          type: b.id,
-          earnedAt: Date.now()
-        };
-        await put(STORES.BADGES, badgeDoc);
-        await addToSyncQueue({ collection: 'badges', docId: badgeDoc.id, operation: 'add', data: badgeDoc });
-        newlyAwarded.push(b);
+        await saveAndQueueBadge(b, fallbackMemberId, fallbackGroupId, userId, earnedBadgeTypes, newlyAwarded);
       }
     }
 
     return newlyAwarded;
+
   } catch (err) {
     console.warn('[BadgeEngine] awardEligibleBadgesForUser error:', err);
     return [];

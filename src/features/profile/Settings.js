@@ -403,11 +403,3 @@ export async function renderSettings() {
   document.documentElement.setAttribute('data-font-size', fontSize);
   document.documentElement.setAttribute('data-reduce-motion', !animations ? 'true' : 'false');
 }
-
-function showSettingsToast(msg) {
-  const t = document.createElement('div');
-  t.className = 'toast';
-  t.textContent = msg;
-  document.body.appendChild(t);
-  setTimeout(() => t.remove(), 2500);
-}
