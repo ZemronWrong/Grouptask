@@ -22,6 +22,7 @@ import { taskCardHTML } from './TaskCard.js';
 import {
   taskModalHTML,
   shareModalHTML,
+  boardMembersModalHTML,
   proofReviewModalHTML,
   proofSubmitModalHTML,
 } from './TaskModal.js';
@@ -117,7 +118,7 @@ export async function renderTaskBoard(groupId) {
   const shownMembers = members.slice(0, MAX_AVATAR_SHOW);
   const extraCount = members.length - MAX_AVATAR_SHOW;
   const memberAvatarStack = `
-    <div class="member-avatar-stack" id="btn-share" style="cursor:pointer; display:flex; align-items:center; gap:4px; margin-right:8px;">
+    <div class="member-avatar-stack" id="btn-board-members" title="Board Members" style="cursor:pointer; display:flex; align-items:center; gap:4px; margin-right:8px;">
       <div style="display:flex; flex-direction:row-reverse; align-items:center;">
         ${shownMembers.map((m, i) => {
           const prof = profileMap[m.uid];
@@ -182,7 +183,8 @@ export async function renderTaskBoard(groupId) {
     </div>
 
     ${taskModalHTML(members, STATUSES)}
-    ${shareModalHTML(members, group)}
+    ${shareModalHTML(members, group, profileMap)}
+    ${boardMembersModalHTML(members, profileMap)}
     ${proofReviewModalHTML()}
     ${proofSubmitModalHTML()}
     <div id="task-detail-modal-container"></div>

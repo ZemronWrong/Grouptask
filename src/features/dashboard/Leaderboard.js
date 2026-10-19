@@ -17,7 +17,8 @@ export async function renderLeaderboard(groupId) {
   const tasks = await getAllByIndex(STORES.TASKS, 'groupId', groupId);
   const members = await getAllByIndex(STORES.MEMBERS, 'groupId', groupId);
   const badges = await getAllByIndex(STORES.BADGES, 'groupId', groupId);
-  const peerReviews = await getAllByIndex(STORES.PEER_REVIEWS, 'groupId', groupId);
+  const allPR = await getAll(STORES.PEER_REVIEWS);
+  const peerReviews = allPR.filter(pr => pr.groupId === groupId);
 
   // Compute WPS and PE scores for all members using Chapter 3 formulation
   const memberIds = members.map(m => m.id);
@@ -26,32 +27,40 @@ export async function renderLeaderboard(groupId) {
   const ratingsMap = {};
   for (const m of members) {
     ratingsMap[m.id] = peerReviews
-      .filter(pr => pr.evaluateeId === m.id)
+      .filter(pr => pr.evaluateeId === m.id || pr.evaluateeId === m.uid || pr.evaluateeUid === m.uid)
       .map(pr => ({ rating: pr.score }));
   }
   const peMap = calculateAllPEScores(csMap, ratingsMap, n);
 
-  // Compute Board Points concurrently for all members
+  // Compute Board Points & Peer Points concurrently for all members
   const memberPoints = await Promise.all(
     members.map(async m => {
       const bp = await calculateBoardPoints(groupId, m.uid);
-      const mReviews = peerReviews.filter(pr => pr.evaluateeId === m.id);
+      const mReviews = peerReviews.filter(pr => pr.evaluateeId === m.id || pr.evaluateeId === m.uid || pr.evaluateeUid === m.uid);
       const avgScore = mReviews.length > 0 
         ? mReviews.reduce((sum, pr) => sum + pr.score, 0) / mReviews.length 
         : 0;
+      const pe = peMap[m.id] ?? { peScore: 0, ratingsStatus: 'task_based_only', ratingCount: 0, ciComponent: 0 };
+      
+      // Peer Adjustment Points: Each star gives 20 peer bonus points (up to 100 points for 5.0 stars)
+      const peerPoints = mReviews.length > 0 ? Math.round(avgScore * 20) : 0;
+      const totalPoints = bp + peerPoints;
+
       return {
         ...m,
         boardPoints: bp,
+        peerPoints,
+        totalPoints,
         avgScore,
         reviewCount: mReviews.length,
-        badges: badges.filter(b => b.memberId === m.id),
+        badges: badges.filter(b => b.memberId === m.id || b.uid === m.uid),
         wps: csMap[m.id]?.score ?? 0,
-        pe:  peMap[m.id] ?? { peScore: 0, ratingsStatus: 'task_based_only', ratingCount: 0, ciComponent: 0 },
+        pe,
       };
     })
   );
 
-  const leaderboardData = memberPoints.sort((a, b) => b.boardPoints - a.boardPoints);
+  const leaderboardData = memberPoints.sort((a, b) => b.totalPoints - a.totalPoints);
   const top3 = leaderboardData.slice(0, 3);
   const rest = leaderboardData.slice(3);
   const rewardLabel = getTerm('rewardLabel');
@@ -76,8 +85,10 @@ export async function renderLeaderboard(groupId) {
                 <div class="avatar avatar-lg">${escapeHtml(m.displayName?.[0] || '?')}</div>
                 <div style="text-align:center;">
                   <div class="podium-name">${escapeHtml(m.displayName)}</div>
-                  <div class="podium-level">${m.reviewCount} Reviews</div>
-                  <div class="podium-points">${m.boardPoints} <span style="font-size:0.7rem;">BP</span></div>
+                  <div class="podium-points">${m.totalPoints} <span style="font-size:0.7rem;">PTS</span></div>
+                  <div class="podium-level" style="font-size:0.75rem; color:var(--text-muted); margin-top:2px;">
+                    ${m.boardPoints} Task + ${m.peerPoints} Peer
+                  </div>
                 </div>
               </div>
             `).join('')}
@@ -87,8 +98,8 @@ export async function renderLeaderboard(groupId) {
             <div class="lb-row lb-header">
               <div>Rank</div>
               <div>Member</div>
-              <div>Board Points (BP)</div>
-              <div>WPS Share</div>
+              <div>Total Points</div>
+              <div>Task BP</div>
               <div>PE Score</div>
               <div>Peer Avg</div>
               <div>Board Badges</div>
@@ -99,15 +110,21 @@ export async function renderLeaderboard(groupId) {
                 <div>
                   <span style="font-family:var(--font-heading); font-weight:600; color:var(--text);">${escapeHtml(m.displayName)}</span>
                 </div>
-                <div style="font-family:var(--font-heading); font-weight:bold; color:var(--accent);">${m.boardPoints}</div>
-                <div style="font-family:var(--font-heading); font-weight:600; color:var(--accent);">${m.wps.toFixed(1)}%</div>
-                <div style="font-family:var(--font-heading); font-weight:700; color:var(--primary);">
+                <div style="font-family:var(--font-heading); font-weight:bold; color:var(--primary); font-size:1.05rem;">
+                  ${m.totalPoints}
+                </div>
+                <div style="font-family:var(--font-heading); font-weight:600; color:var(--accent);">
+                  ${m.boardPoints} BP
+                </div>
+                <div style="font-family:var(--font-heading); font-weight:700; color:var(--text);">
                   ${m.pe.peScore.toFixed(1)}/100
                   <div style="font-size:0.65rem; color:var(--text-muted); font-family:var(--font-body); font-weight:400;">
                     ${m.pe.ratingsStatus === 'has_ratings' ? `${m.pe.ratingCount} peer ratings` : 'Task-based only'}
                   </div>
                 </div>
-                <div style="color:var(--text-secondary);">${m.avgScore.toFixed(1)} / 5.0</div>
+                <div style="color:var(--text-secondary); font-weight:600;">
+                  ${m.avgScore > 0 ? `${m.avgScore.toFixed(1)} / 5.0 ⭐` : '<span style="opacity:0.5;">Pending</span>'}
+                </div>
                 <div style="display:flex; gap:4px; flex-wrap:wrap;">
                   ${m.badges.map(b => {
                     const meta = getBadgeById(b.type || b.id);
@@ -159,9 +176,9 @@ export async function renderLeaderboard(groupId) {
     
     if (pointsCtx && radarCtx && pieCtx) {
       const labels = leaderboardData.map(m => m.displayName || 'Unknown');
-      const totalPoints = leaderboardData.map(m => m.boardPoints);
-      const taskPoints = leaderboardData.map(m => m.boardPoints); // Simplified for now since peer pts are gone
-      const peerPoints = leaderboardData.map(m => m.avgScore);
+      const totalPoints = leaderboardData.map(m => m.totalPoints);
+      const taskPoints = leaderboardData.map(m => m.boardPoints);
+      const peerPoints = leaderboardData.map(m => m.peerPoints);
 
       // Theme Colors & Fonts
       const style = getComputedStyle(document.body);
@@ -188,9 +205,15 @@ export async function renderLeaderboard(groupId) {
               borderRadius: 4
             },
             {
-              label: 'Task Points',
+              label: 'Task BP',
               data: taskPoints,
               backgroundColor: secondaryColor,
+              borderRadius: 4
+            },
+            {
+              label: 'Peer Points',
+              data: peerPoints,
+              backgroundColor: '#F59E0B',
               borderRadius: 4
             }
           ]
@@ -213,8 +236,8 @@ export async function renderLeaderboard(groupId) {
           labels,
           datasets: [
             {
-              label: 'Peer Adjustments',
-              data: peerPoints,
+              label: 'Peer Quality (0-100)',
+              data: leaderboardData.map(m => Math.round(m.avgScore * 20)),
               backgroundColor: 'rgba(239, 68, 68, 0.2)',
               borderColor: dangerColor,
               pointBackgroundColor: dangerColor,
@@ -222,8 +245,8 @@ export async function renderLeaderboard(groupId) {
               pointHoverBorderColor: dangerColor
             },
             {
-              label: 'Task Points',
-              data: taskPoints,
+              label: 'WPS Share (%)',
+              data: leaderboardData.map(m => Math.round(m.wps)),
               backgroundColor: 'rgba(16, 185, 129, 0.2)',
               borderColor: secondaryColor,
               pointBackgroundColor: secondaryColor,
@@ -261,7 +284,7 @@ export async function renderLeaderboard(groupId) {
         data: {
           labels,
           datasets: [{
-            data: taskPoints, // base contribution on tasks completed
+            data: leaderboardData.map(m => Math.max(1, m.totalPoints)), // base contribution on total points (task + peer)
             backgroundColor: pieColors.slice(0, labels.length),
             borderWidth: 2,
             borderColor: getComputedStyle(document.body).getPropertyValue('--bg-card').trim() || '#fff'
@@ -298,17 +321,31 @@ export async function renderLeaderboard(groupId) {
   }, 0);
 }
 
+function showToast(msg) {
+  const t = document.createElement('div');
+  t.className = 'toast';
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 2500);
+}
+
 export async function renderEvaluation(groupId) {
   const app = document.getElementById('app');
   const user = currentUser();
   const members = await getAllByIndex(STORES.MEMBERS, 'groupId', groupId);
   const tasks = await getAllByIndex(STORES.TASKS, 'groupId', groupId);
-  const peerReviews = await getAllByIndex(STORES.PEER_REVIEWS, 'groupId', groupId);
+  const allPR = await getAll(STORES.PEER_REVIEWS);
+  const peerReviews = allPR.filter(pr => pr.groupId === groupId);
 
-  const me = members.find(m => m.uid === user.uid);
-  const others = members.filter(m => m.uid !== user.uid);
+  const me = members.find(m => m.uid === user?.uid) || members.find(m => m.displayName === user?.displayName);
+  const others = members.filter(m => m.uid !== user?.uid);
 
-  const myReviews = peerReviews.filter(pr => pr.reviewerId === me?.id);
+  const myReviews = peerReviews.filter(pr => 
+    pr.reviewerId === me?.id || 
+    pr.reviewerId === user?.uid || 
+    pr.reviewerUid === user?.uid ||
+    pr.reviewerMemberId === me?.id
+  );
 
   app.innerHTML = `
     <div class="app-layout">
@@ -321,15 +358,19 @@ export async function renderEvaluation(groupId) {
         </header>
         
         <div class="leaderboard-container">
-          <p style="color:var(--text-secondary); margin-bottom: 24px;">Rate your teammates' contributions. This confidentially adjusts their total points on the leaderboard.</p>
+          <p style="color:var(--text-secondary); margin-bottom: 24px;">Rate your teammates' contributions. This confidentially adjusts their total points and standing on the leaderboard.</p>
 
           ${others.length === 0 ? '<div class="empty-state">You are the only member in this group.</div>' : ''}
 
           ${others.map(m => {
-            const existingReview = myReviews.find(r => r.evaluateeId === m.id);
+            const existingReview = myReviews.find(r => 
+              r.evaluateeId === m.id || 
+              r.evaluateeId === m.uid || 
+              r.evaluateeUid === m.uid
+            );
             const score = existingReview?.score || 0;
             return `
-              <div class="eval-card" style="${existingReview ? 'border-color:rgba(34,197,94,0.35); background:linear-gradient(to bottom, rgba(34,197,94,0.03), transparent);' : ''}">
+              <div class="eval-card" style="${existingReview ? 'border-color:rgba(34,197,94,0.45); background:linear-gradient(to bottom, rgba(34,197,94,0.06), transparent);' : ''}">
                 <div class="eval-card-header">
                   <div style="display:flex; align-items:center; gap:12px;">
                     <div class="avatar">${escapeHtml(m.displayName?.[0] || '?')}</div>
@@ -339,7 +380,7 @@ export async function renderEvaluation(groupId) {
                   </div>
                   ${existingReview 
                     ? `<div style="display:flex; align-items:center; gap:8px;">
-                         <span style="background:rgba(34,197,94,0.15); color:#22c55e; border:1px solid rgba(34,197,94,0.3); font-size:0.72rem; font-weight:700; padding:4px 8px; border-radius:6px; display:inline-flex; align-items:center; gap:4px; font-family:var(--font-heading);">
+                         <span style="background:rgba(34,197,94,0.2); color:#22c55e; border:1px solid rgba(34,197,94,0.4); font-size:0.75rem; font-weight:700; padding:4px 10px; border-radius:6px; display:inline-flex; align-items:center; gap:4px; font-family:var(--font-heading);">
                            ✓ EVALUATION SUBMITTED
                          </span>
                          <div class="eval-pe-score" style="color:var(--primary); font-weight:700;">Rated: ${score}/5 ⭐</div>
@@ -348,26 +389,28 @@ export async function renderEvaluation(groupId) {
                   }
                 </div>
                 
-                ${existingReview ? `<div style="font-size:0.78rem; color:#22c55e; margin: 8px 0 12px 0; display:flex; align-items:center; gap:6px;">✓ You already evaluated this teammate. You can update your rating or feedback below:</div>` : ''}
+                ${existingReview ? `<div style="font-size:0.82rem; color:#22c55e; margin: 8px 0 12px 0; font-weight:600; display:flex; align-items:center; gap:6px;">✓ You evaluated this teammate (${score}/5 ⭐). You can modify your rating or feedback below:</div>` : ''}
 
                 <form class="eval-form" data-evaluatee-id="${m.id}">
-                  <div class="form-group" style="margin-bottom:12px;">
-                    <label>Rating (1-5 Stars)</label>
-                    <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                  <div class="form-group" style="margin-bottom:14px;">
+                    <label style="font-weight:600; color:var(--text);">Rating (1-5 Stars)</label>
+                    <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:6px;">
                       ${[1,2,3,4,5].map(star => `
-                        <label style="cursor:pointer; display:flex; align-items:center; gap:4px; color:var(--text); font-family:var(--font-heading);">
-                          <input type="radio" name="score_${m.id}" value="${star}" ${score === star ? 'checked' : ''} required />
+                        <label class="star-rating-pill" style="cursor:pointer; display:inline-flex; align-items:center; gap:6px; padding:6px 14px; border-radius:8px; border:1px solid ${score === star ? 'var(--primary)' : 'var(--border)'}; background:${score === star ? 'var(--primary-soft)' : 'var(--bg-input)'}; color:var(--text); font-family:var(--font-heading); font-weight:${score === star ? '700' : '400'}; transition:all 0.15s ease;">
+                          <input type="radio" name="score_${m.id}" value="${star}" ${score === star ? 'checked' : ''} required style="accent-color:var(--primary);" />
                           ${star} ⭐
                         </label>
                       `).join('')}
                     </div>
                   </div>
-                  <div class="form-group" style="margin-bottom:12px;">
-                    <label>Feedback (Private)</label>
-                    <textarea name="comment_${m.id}" rows="2" placeholder="How was working with them?">${existingReview?.comment || ''}</textarea>
+                  <div class="form-group" style="margin-bottom:14px;">
+                    <label style="font-weight:600; color:var(--text);">Feedback (Private)</label>
+                    <textarea name="comment_${m.id}" rows="2" placeholder="Write private feedback for your teammate..." style="width:100%; border-radius:8px; border:1px solid var(--border); padding:8px 10px; background:var(--bg-input); color:var(--text); box-sizing:border-box;">${existingReview?.comment || ''}</textarea>
                   </div>
                   <div style="text-align:right;">
-                    <button type="submit" class="btn ${existingReview ? 'btn-secondary' : 'btn-primary'} btn-sm">${existingReview ? 'Update Evaluation' : 'Submit Evaluation'}</button>
+                    <button type="submit" class="btn ${existingReview ? 'btn-secondary' : 'btn-primary'} btn-sm" style="font-weight:700;">
+                      ${existingReview ? '✓ Update Evaluation' : 'Submit Evaluation'}
+                    </button>
                   </div>
                 </form>
               </div>
@@ -384,17 +427,30 @@ export async function renderEvaluation(groupId) {
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
       const evaluateeId = form.dataset.evaluateeId;
-      const score = parseInt(form.querySelector(`input[name="score_${evaluateeId}"]:checked`).value);
-      const comment = form.querySelector(`textarea[name="comment_${evaluateeId}"]`).value;
+      const evaluatee = members.find(m => m.id === evaluateeId);
+      const scoreInput = form.querySelector(`input[name="score_${evaluateeId}"]:checked`);
+      if (!scoreInput) {
+        showToast('Please select a star rating first.');
+        return;
+      }
+      const score = parseInt(scoreInput.value);
+      const comment = form.querySelector(`textarea[name="comment_${evaluateeId}"]`)?.value || '';
 
-      const existingReview = myReviews.find(r => r.evaluateeId === evaluateeId);
+      const existingReview = myReviews.find(r => 
+        r.evaluateeId === evaluateeId || 
+        r.evaluateeId === evaluatee?.uid || 
+        r.evaluateeUid === evaluatee?.uid
+      );
       const reviewId = existingReview ? existingReview.id : generateId();
 
       const review = {
         id: reviewId,
         groupId,
-        reviewerId: me.id,
-        evaluateeId,
+        reviewerId: user?.uid || me?.id, // Use user.uid so firestore.rules (request.auth.uid) matches!
+        reviewerMemberId: me?.id || user?.uid,
+        reviewerUid: user?.uid || me?.id,
+        evaluateeId: evaluatee?.id || evaluateeId,
+        evaluateeUid: evaluatee?.uid || null,
         score,
         comment,
         updatedAt: Date.now()
@@ -404,15 +460,18 @@ export async function renderEvaluation(groupId) {
       await addToSyncQueue({ collection: 'peerReviews', docId: reviewId, operation: 'update', data: review });
 
       // Calculate new average for the evaluatee
-      const allReviewsForEvaluatee = (await getAllByIndex(STORES.PEER_REVIEWS, 'groupId', groupId))
-                                      .filter(r => r.evaluateeId === evaluateeId);
+      const allReviewsForEvaluatee = (await getAll(STORES.PEER_REVIEWS))
+        .filter(r => r.groupId === groupId && (r.evaluateeId === evaluateeId || r.evaluateeId === evaluatee?.uid || r.evaluateeUid === evaluatee?.uid));
       
-      const newAvg = allReviewsForEvaluatee.reduce((sum, r) => sum + r.score, 0) / allReviewsForEvaluatee.length;
+      const newAvg = allReviewsForEvaluatee.length > 0 
+        ? allReviewsForEvaluatee.reduce((sum, r) => sum + r.score, 0) / allReviewsForEvaluatee.length
+        : score;
       
-      const evaluatee = await get(STORES.MEMBERS, evaluateeId);
-      evaluatee.averagePeerScore = newAvg;
-      await put(STORES.MEMBERS, evaluatee);
-      await addToSyncQueue({ collection: 'members', docId: evaluatee.id, operation: 'update', data: evaluatee });
+      if (evaluatee) {
+        evaluatee.averagePeerScore = newAvg;
+        await put(STORES.MEMBERS, evaluatee);
+        await addToSyncQueue({ collection: 'members', docId: evaluatee.id, operation: 'update', data: evaluatee });
+      }
 
       // Record Peer Eval Rep Event
       let eventType = null;
@@ -420,7 +479,7 @@ export async function renderEvaluation(groupId) {
       if (newAvg >= 4.0) { eventType = EVENT_TYPES.PEER_EVAL_HIGH; repDelta = 15; }
       else if (newAvg < 2.5) { eventType = EVENT_TYPES.PEER_EVAL_LOW; repDelta = -20; }
       
-      if (eventType) {
+      if (eventType && evaluatee) {
         await recordEvent({
           eventType,
           userId: evaluatee.uid,
@@ -432,13 +491,16 @@ export async function renderEvaluation(groupId) {
       }
 
       // Notify the evaluatee
-      await notify({
-        uid: evaluatee.uid, type: 'evaluation_received',
-        title: 'New Peer Evaluation',
-        message: `Someone rated you ${score}★`,
-        icon: '⭐', actionLink: `#/group/${groupId}/leaderboard`, groupId
-      });
+      if (evaluatee) {
+        await notify({
+          uid: evaluatee.uid, type: 'evaluation_received',
+          title: 'New Peer Evaluation',
+          message: `Someone rated you ${score}★`,
+          icon: '⭐', actionLink: `#/group/${groupId}/leaderboard`, groupId
+        });
+      }
 
+      showToast(`Evaluation for ${evaluatee?.displayName || 'teammate'} submitted! ⭐`);
       await renderEvaluation(groupId);
     });
   });

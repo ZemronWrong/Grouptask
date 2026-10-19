@@ -16,8 +16,9 @@ import { logActivity } from '../../services/activityLogService.js';
 import { openTaskModal, openTaskDetailModal } from './TaskModal.js';
 import { renderAchievementPopup } from './TaskCard.js';
 import { recordEvent, EVENT_TYPES, calculateTotalReputation } from '../../core/eventEngine.js';
-import { evaluateBoardBadges, evaluateCardBadges, evaluateHiddenBadges, evaluateStreakBadges } from '../../core/badgeEngine.js';
+import { evaluateBoardBadges, evaluateCardBadges, evaluateHiddenBadges, evaluateStreakBadges, awardEligibleBadgesForUser } from '../../core/badgeEngine.js';
 import { calculateStreak } from '../../core/gamificationEngine.js';
+import { openMemberPopup } from './TaskComments.js';
 
 function showToast(msg) {
   const t = document.createElement('div');
@@ -56,7 +57,91 @@ export function bindBoardEvents(boardContext, rerenderBoard) {
       return;
     }
 
-    if (e.target.closest('#btn-share') || e.target.closest('#btn-share-btn')) {
+    if (e.target.closest('#btn-board-members')) {
+      const modal = document.getElementById('board-members-modal');
+      if (modal) modal.hidden = false;
+      return;
+    }
+
+    if (e.target.closest('#btn-share-btn') || e.target.closest('#btn-share')) {
+      const modal = document.getElementById('share-modal');
+      if (modal) modal.hidden = false;
+      return;
+    }
+
+    // Click member in Board Members modal -> open detailed member popup card
+    const boardMemberItem = e.target.closest('.board-member-item');
+    if (boardMemberItem) {
+      const memberId = boardMemberItem.dataset.memberId;
+      const targetMember = members.find((m) => m.id === memberId);
+      if (targetMember) {
+        await openMemberPopup(targetMember, groupId);
+      }
+      return;
+    }
+
+    // Share modal tab switching
+    const shareTabBtn = e.target.closest('.share-tab-btn');
+    if (shareTabBtn) {
+      const tab = shareTabBtn.dataset.tab;
+      document.querySelectorAll('.share-tab-btn').forEach((b) => {
+        const isActive = b.dataset.tab === tab;
+        b.classList.toggle('active', isActive);
+        b.style.borderBottomColor = isActive ? 'var(--primary)' : 'transparent';
+        b.style.color = isActive ? 'var(--primary)' : 'var(--text-secondary)';
+      });
+      const accessContent = document.getElementById('share-tab-access-content');
+      const reqContent = document.getElementById('share-tab-requests-content');
+      if (accessContent) accessContent.hidden = tab !== 'access';
+      if (reqContent) reqContent.hidden = tab !== 'requests';
+      return;
+    }
+
+    // Accept Join Request
+    const acceptReqBtn = e.target.closest('.btn-accept-request');
+    if (acceptReqBtn) {
+      const reqId = acceptReqBtn.dataset.requestId;
+      const currentGroup = await get(STORES.GROUPS, groupId);
+      const reqList = currentGroup?.joinRequests || [];
+      const req = reqList.find((r) => r.id === reqId);
+      if (req) {
+        const roleSel = document.querySelector(`.join-request-role-select[data-request-id="${reqId}"]`);
+        const chosenRole = roleSel?.value || 'member';
+        const newMember = {
+          id: `${groupId}_${req.uid}`,
+          uid: req.uid,
+          groupId,
+          displayName: req.displayName || 'New Member',
+          email: req.email || null,
+          role: chosenRole,
+          joinedAt: Date.now(),
+        };
+        await put(STORES.MEMBERS, newMember);
+        await addToSyncQueue({ collection: 'members', docId: newMember.id, operation: 'add', data: newMember });
+
+        // Remove from group join requests
+        currentGroup.joinRequests = reqList.filter((r) => r.id !== reqId);
+        await put(STORES.GROUPS, currentGroup);
+        await addToSyncQueue({ collection: 'groups', docId: groupId, operation: 'update', data: currentGroup });
+
+        showToast(`Accepted ${req.displayName} as ${chosenRole}!`);
+        await rerenderBoard(groupId);
+        document.getElementById('share-modal').hidden = false;
+      }
+      return;
+    }
+
+    // Decline Join Request
+    const declineReqBtn = e.target.closest('.btn-decline-request');
+    if (declineReqBtn) {
+      const reqId = declineReqBtn.dataset.requestId;
+      const currentGroup = await get(STORES.GROUPS, groupId);
+      const reqList = currentGroup?.joinRequests || [];
+      currentGroup.joinRequests = reqList.filter((r) => r.id !== reqId);
+      await put(STORES.GROUPS, currentGroup);
+      await addToSyncQueue({ collection: 'groups', docId: groupId, operation: 'update', data: currentGroup });
+      showToast('Join request declined.');
+      await rerenderBoard(groupId);
       document.getElementById('share-modal').hidden = false;
       return;
     }
@@ -254,6 +339,26 @@ export function bindBoardEvents(boardContext, rerenderBoard) {
     await rerenderBoard(groupId);
     document.getElementById('share-modal').hidden = false;
   });
+
+  // ─── Real-time Member Search filtering ───
+  document.addEventListener('input', (e) => {
+    if (e.target.id === 'board-member-search') {
+      const q = e.target.value.toLowerCase().trim();
+      document.querySelectorAll('.board-member-item').forEach((item) => {
+        const name = item.dataset.name || '';
+        const email = item.dataset.email || '';
+        item.style.display = (name.includes(q) || email.includes(q)) ? 'flex' : 'none';
+      });
+    }
+
+    if (e.target.id === 'share-member-search') {
+      const q = e.target.value.toLowerCase().trim();
+      document.querySelectorAll('.share-member-row').forEach((row) => {
+        const name = row.dataset.memberName || '';
+        row.style.display = name.includes(q) ? 'flex' : 'none';
+      });
+    }
+  });
 }
 
 // ── Task persistence helpers ──────────────────────────────────────────────────
@@ -324,6 +429,25 @@ export async function saveTask(groupId, members) {
     }
   }
 
+  // If task was completed, award event points and badges
+  if (status === 'done' && (!oldTask || oldTask.status !== 'done')) {
+    const assignee = members.find((m) => m.id === assignedTo);
+    if (assignee) {
+      const weight = Number(task.weight) || 100;
+      await recordEvent({
+        eventType: EVENT_TYPES.CARD_COMPLETE,
+        userId: assignee.uid,
+        memberId: assignee.id,
+        boardId: groupId,
+        boardPoints: weight,
+        xpDelta: weight,
+        repDelta: 5,
+        metadata: { taskId: id, taskTitle: task.title, weight }
+      });
+      await awardEligibleBadgesForUser(assignee.uid);
+    }
+  }
+
   // Notify newly assigned member
   if (assignedTo && (!oldTask || oldTask.assignedTo !== assignedTo)) {
     const assignee = members.find((m) => m.id === assignedTo);
@@ -391,6 +515,18 @@ export async function moveTask(taskId, newStatus, groupId, members) {
     if (assignee) {
       await notify({ uid: assignee.uid, type: 'approval_granted', title: 'Task Completed! 🎉',
         message: `Your task "${task.title}" was marked complete.`, icon: '✅', actionLink: `#/group/${groupId}`, groupId });
+      const weight = Number(task.weight) || 100;
+      await recordEvent({
+        eventType: EVENT_TYPES.CARD_COMPLETE,
+        userId: assignee.uid,
+        memberId: assignee.id,
+        boardId: groupId,
+        boardPoints: weight,
+        xpDelta: weight,
+        repDelta: 5,
+        metadata: { taskId, taskTitle: task.title, weight }
+      });
+      await awardEligibleBadgesForUser(assignee.uid);
     }
   }
 }

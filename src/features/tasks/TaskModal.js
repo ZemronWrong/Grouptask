@@ -102,53 +102,157 @@ export function taskModalHTML(members, statuses) {
   `;
 }
 
-export function shareModalHTML(members, group) {
+export function shareModalHTML(members, group, profileMap = {}) {
+  const pendingRequests = group?.joinRequests || [];
+
   return `
     <div class="modal-overlay" id="share-modal" hidden>
-      <div class="modal">
+      <div class="modal" style="max-width: 520px;">
         <div class="modal-header">
           <h2>Share this Board</h2>
           <button class="btn-icon btn-close-modal" aria-label="Close">✕</button>
         </div>
-        <div class="modal-body">
-          <p style="font-size: 0.85rem; color: var(--text-secondary);">Invite others to join using this link or invite code: <strong style="color:var(--primary);">${group?.inviteCode}</strong></p>
 
-          <div style="margin-top:8px;">
-            <label style="font-family:var(--font-heading); font-size:0.75rem; color:var(--text-secondary); letter-spacing:0.05em;">WHO HAS ACCESS</label>
-            <div class="share-member-list">
-              <div class="share-member-row" style="background:transparent; border-color:transparent;">
-                <div class="avatar" style="background:var(--bg-card); color:var(--warning);">🔒</div>
-                <div class="share-member-info">
-                  <span class="share-member-name">People invited to board</span>
+        <!-- Share Tabs -->
+        <div class="share-tabs-nav" style="display:flex; border-bottom:1px solid var(--border); margin-bottom:16px;">
+          <button type="button" class="share-tab-btn active" data-tab="access" style="flex:1; padding:10px 14px; background:transparent; border:none; border-bottom:2px solid var(--primary); color:var(--primary); font-family:var(--font-heading); font-weight:700; font-size:0.85rem; cursor:pointer;">
+            Who Has Access (${members.length})
+          </button>
+          <button type="button" class="share-tab-btn" data-tab="requests" style="flex:1; padding:10px 14px; background:transparent; border:none; border-bottom:2px solid transparent; color:var(--text-secondary); font-family:var(--font-heading); font-weight:600; font-size:0.85rem; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:6px;">
+            Join Requests
+            <span class="share-req-badge" id="share-req-badge" style="background:${pendingRequests.length > 0 ? 'var(--warning)' : 'var(--border)'}; color:#000; font-size:0.7rem; font-weight:700; padding:1px 6px; border-radius:10px;">${pendingRequests.length}</span>
+          </button>
+        </div>
+
+        <div class="modal-body" style="padding-top:0;">
+          <!-- TAB 1: WHO HAS ACCESS -->
+          <div id="share-tab-access-content">
+            <p style="font-size: 0.82rem; color: var(--text-secondary); margin-bottom:12px;">
+              Invite teammates using this board's invite code: <strong style="color:var(--primary); font-size:0.95rem;">${escapeHtml(group?.inviteCode || '')}</strong>
+            </p>
+
+            <div style="position:relative; margin-bottom:12px;">
+              <input type="text" id="share-member-search" class="input" placeholder="Filter members by name..." style="width:100%; box-sizing:border-box; font-size:0.82rem; padding:6px 10px;" />
+            </div>
+
+            <div class="share-member-list" id="share-members-container" style="max-height:240px; overflow-y:auto; display:flex; flex-direction:column; gap:8px;">
+              ${members.map((m) => {
+                const prof = profileMap[m.uid] || {};
+                const hasPhoto = prof.avatarType === 'custom' && prof.avatar;
+                const avatarHTML = hasPhoto
+                  ? `<img src="${prof.avatar}" alt="${escapeHtml(m.displayName?.[0] || '?')}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`
+                  : escapeHtml(m.displayName?.[0] || '?');
+                const email = prof.email || m.email || (m.uid.includes('@') ? m.uid : `${m.displayName.toLowerCase().replace(/[^a-z0-9]/g, '') || 'member'}@grouptask.io`);
+
+                return `
+                  <div class="share-member-row" data-member-name="${escapeHtml(m.displayName.toLowerCase())}">
+                    <div class="avatar" style="overflow:hidden; width:34px; height:34px; flex-shrink:0;">
+                      ${avatarHTML}
+                    </div>
+                    <div class="share-member-info" style="flex:1; min-width:0;">
+                      <span class="share-member-name" style="font-size:0.85rem; font-weight:600; color:var(--text);">${escapeHtml(m.displayName)}</span>
+                      <span class="share-member-email" style="font-size:0.75rem; color:var(--text-muted);">${escapeHtml(email)}</span>
+                    </div>
+                    ${m.role === 'owner' ? `
+                      <span class="share-role-locked" style="background:var(--primary-soft); color:var(--primary); padding:3px 10px; border-radius:12px; font-size:0.72rem; font-family:var(--font-heading); font-weight:700;">OWNER</span>
+                    ` : `
+                      <select class="share-role-select" data-member-id="${m.id}" style="font-size:0.75rem; padding:4px 8px; border-radius:6px; border:1px solid var(--border); background:var(--bg-input); color:var(--text);">
+                        <option value="co-admin" ${m.role === 'co-admin' ? 'selected' : ''}>Co-owner</option>
+                        <option value="member" ${m.role === 'member' ? 'selected' : ''}>Member</option>
+                        <option value="viewer" ${m.role === 'viewer' ? 'selected' : ''}>Only View</option>
+                        <option value="remove">Remove</option>
+                      </select>
+                    `}
+                  </div>
+                `;
+              }).join('')}
+            </div>
+
+            <div class="link-box" style="margin-top:16px;">
+              <span class="link-url">https://app.grouptask.io/board/${group?.inviteCode}</span>
+              <button class="btn btn-secondary btn-sm" id="btn-copy-link-bottom">COPY</button>
+            </div>
+          </div>
+
+          <!-- TAB 2: JOIN REQUESTS -->
+          <div id="share-tab-requests-content" hidden>
+            <div style="font-size:0.82rem; color:var(--text-secondary); margin-bottom:12px;">
+              Review and manage pending requests to join this board. Owners and Co-owners can assign roles and approve.
+            </div>
+
+            <div id="join-requests-container" style="display:flex; flex-direction:column; gap:10px; max-height:280px; overflow-y:auto;">
+              ${pendingRequests.length === 0 ? `
+                <div style="padding:28px 12px; text-align:center; color:var(--text-muted); font-size:0.85rem;">
+                  <div style="font-size:1.6rem; margin-bottom:6px;">📬</div>
+                  No pending join requests at this time.
                 </div>
-                <span style="color:var(--text-muted); font-size:1.2rem;">›</span>
-              </div>
-
-              ${members.map((m) => `
-                <div class="share-member-row">
-                  <div class="avatar" style="overflow:hidden;">
-                    ${escapeHtml(m.displayName?.[0] || '?')}
+              ` : pendingRequests.map((req) => `
+                <div class="join-request-card" data-request-id="${req.id}" style="display:flex; align-items:center; gap:12px; padding:12px; border-radius:10px; background:var(--bg-card); border:1px solid var(--border);">
+                  <div class="avatar" style="width:36px; height:36px; flex-shrink:0;">
+                    ${escapeHtml(req.displayName?.[0] || '?')}
                   </div>
-                  <div class="share-member-info">
-                    <span class="share-member-name">${escapeHtml(m.displayName)}</span>
-                    <span class="share-member-email">${escapeHtml(m.uid)}</span>
+                  <div style="flex:1; min-width:0;">
+                    <div style="font-weight:600; font-size:0.85rem; color:var(--text);">${escapeHtml(req.displayName || 'Applicant')}</div>
+                    <div style="font-size:0.75rem; color:var(--text-muted);">${escapeHtml(req.email || req.uid || '')}</div>
+                    <div style="font-size:0.7rem; color:var(--accent); margin-top:2px;">Requested: ${new Date(req.requestedAt || Date.now()).toLocaleDateString()}</div>
                   </div>
-                  ${m.role === 'owner' ? `<span class="share-role-locked" style="background:var(--primary-soft); color:var(--primary); padding:3px 10px; border-radius:12px; font-size:0.72rem; font-family:var(--font-heading); font-weight:700;">OWNER</span>` : `
-                    <select class="share-role-select" data-member-id="${m.id}">
-                      <option value="co-admin" ${m.role === 'co-admin' ? 'selected' : ''}>Co-owner</option>
-                      <option value="member" ${m.role === 'member' ? 'selected' : ''}>Member</option>
-                      <option value="viewer" ${m.role === 'viewer' ? 'selected' : ''}>Only View</option>
-                      <option value="remove">Remove</option>
+                  <div style="display:flex; flex-direction:column; gap:6px; align-items:flex-end;">
+                    <select class="join-request-role-select" data-request-id="${req.id}" style="font-size:0.72rem; padding:3px 6px; border-radius:6px; border:1px solid var(--border); background:var(--bg-input); color:var(--text);">
+                      <option value="member" selected>Role: Member</option>
+                      <option value="co-admin">Role: Co-owner</option>
+                      <option value="viewer">Role: Only View</option>
                     </select>
-                  `}
+                    <div style="display:flex; gap:6px;">
+                      <button class="btn btn-primary btn-sm btn-accept-request" data-request-id="${req.id}" style="font-size:0.72rem; padding:3px 10px;">Accept</button>
+                      <button class="btn btn-secondary btn-sm btn-decline-request" data-request-id="${req.id}" style="font-size:0.72rem; padding:3px 8px; color:var(--danger);">Decline</button>
+                    </div>
+                  </div>
                 </div>
               `).join('')}
             </div>
           </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
 
-          <div class="link-box">
-            <span class="link-url">https://app.grouptask.io/board/${group?.inviteCode}</span>
-            <button class="btn btn-secondary btn-sm" id="btn-copy-link-bottom">COPY</button>
+export function boardMembersModalHTML(members, profileMap = {}) {
+  return `
+    <div class="modal-overlay" id="board-members-modal" hidden>
+      <div class="modal" style="max-width: 480px;">
+        <div class="modal-header">
+          <h2>Board Members (${members.length})</h2>
+          <button class="btn-icon btn-close-modal" aria-label="Close">✕</button>
+        </div>
+        <div class="modal-body">
+          <div style="position:relative; margin-bottom:14px;">
+            <input type="text" id="board-member-search" class="input" placeholder="Search members by name or email..." style="width:100%; box-sizing:border-box; font-size:0.85rem;" />
+          </div>
+
+          <div class="board-member-list-container" id="board-member-list" style="display:flex; flex-direction:column; gap:8px; max-height:360px; overflow-y:auto;">
+            ${members.map((m) => {
+              const prof = profileMap[m.uid] || {};
+              const hasPhoto = prof.avatarType === 'custom' && prof.avatar;
+              const avatarHTML = hasPhoto
+                ? `<img src="${prof.avatar}" alt="${escapeHtml(m.displayName?.[0] || '?')}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`
+                : escapeHtml(m.displayName?.[0] || '?');
+              const roleLabel = m.role === 'owner' ? 'Owner' : m.role === 'co-admin' ? 'Co-owner' : m.role === 'viewer' ? 'Only View' : 'Member';
+              const email = prof.email || m.email || (m.uid.includes('@') ? m.uid : `${m.displayName.toLowerCase().replace(/[^a-z0-9]/g, '') || 'member'}@grouptask.io`);
+
+              return `
+                <div class="board-member-item" data-member-id="${m.id}" data-name="${escapeHtml(m.displayName.toLowerCase())}" data-email="${escapeHtml(email.toLowerCase())}" style="display:flex; align-items:center; gap:12px; padding:10px 12px; border-radius:10px; border:1px solid var(--border); background:var(--bg-card); cursor:pointer; transition:all var(--transition);">
+                  <div class="avatar" style="width:40px; height:40px; font-size:1.1rem; flex-shrink:0; overflow:hidden;">
+                    ${avatarHTML}
+                  </div>
+                  <div style="flex:1; min-width:0;">
+                    <div style="font-weight:600; font-size:0.9rem; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(m.displayName)}</div>
+                    <div style="font-size:0.75rem; color:var(--text-muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(email)}</div>
+                  </div>
+                  <span class="profile-role-badge" style="font-size:0.7rem; padding:3px 8px; flex-shrink:0;">${roleLabel}</span>
+                </div>
+              `;
+            }).join('')}
           </div>
         </div>
       </div>

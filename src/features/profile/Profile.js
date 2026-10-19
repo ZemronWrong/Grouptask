@@ -9,7 +9,7 @@ import { navigate } from '../../services/router.js';
 import { getXPLevel, calculateStreak } from '../../core/gamificationEngine.js';
 import { calculateGlobalXP, calculateTotalReputation } from '../../core/eventEngine.js';
 import { getRepProgress, isFreeloader } from '../../core/reputationEngine.js';
-import { getBadgeProgress, getAllBadges } from '../../core/badgeEngine.js';
+import { getBadgeProgress, getAllBadges, awardEligibleBadgesForUser } from '../../core/badgeEngine.js';
 import { getRoleName } from '../../services/themeService.js';
 import { ICONS } from '../../assets/icons/icons.js';
 
@@ -26,6 +26,9 @@ export async function renderProfile() {
     avatarType: 'default',
     avatar: '',
   };
+
+  // Auto-award any eligible badges the user completed (e.g. bug squasher, streaks, tasks, comments)
+  await awardEligibleBadgesForUser(user.uid);
 
   const allMembers = await getAll(STORES.MEMBERS);
   const myMembers = allMembers.filter(m => m.uid === user.uid);
@@ -82,6 +85,8 @@ export async function renderProfile() {
   
   // Collect all system badges with descriptions and instructions
   const allBadgesList = getAllBadges();
+  const earnedBadgesList = allBadgesList.filter(b => earnedBadgeTypes.has(b.id));
+  const topBadge = earnedBadgesList[0] || null;
 
   const recentTasks = allTasks
     .filter(t => myMembers.some(m => m.id === t.assignedTo) && t.status === 'done' && t.completedAt)
@@ -116,10 +121,23 @@ export async function renderProfile() {
             }
           </div>
           <div class="profile-hero-info">
-            <h2 class="profile-name">${escapeHtml(profile.displayName)}</h2>
-            <div style="margin-bottom:8px;">
+            <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:6px;">
+              <h2 class="profile-name" style="margin:0;">${escapeHtml(profile.displayName)}</h2>
+              ${topBadge ? `
+                <span class="profile-badge-pill" title="Top Achievement: ${escapeHtml(topBadge.label)}" style="display:inline-flex; align-items:center; gap:6px; background:var(--primary-soft); border:1px solid var(--primary); padding:4px 12px; border-radius:20px; font-size:0.8rem; color:var(--primary); font-family:var(--font-heading); font-weight:700;">
+                  <span style="font-size:1.1rem; display:inline-flex;">${topBadge.icon}</span>
+                  <span>${escapeHtml(topBadge.label)}</span>
+                </span>
+              ` : ''}
+            </div>
+            <div style="margin-bottom:8px; display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
               <span class="profile-role-badge">${getRoleName(primaryRole)}</span>
               <span class="profile-role-badge" style="background: var(--accent); color: white;">Tier: ${repProgress.current.label}</span>
+              ${earnedBadgesList.length > 1 ? `
+                <div style="display:inline-flex; align-items:center; gap:6px; margin-left:4px;">
+                  ${earnedBadgesList.slice(1, 6).map(b => `<span title="${escapeHtml(b.label)}" style="font-size:1.15rem; cursor:help; display:inline-flex;">${b.icon}</span>`).join('')}
+                </div>
+              ` : ''}
             </div>
             ${profile.bio ? `<p class="profile-bio">${escapeHtml(profile.bio)}</p>` : ''}
           </div>

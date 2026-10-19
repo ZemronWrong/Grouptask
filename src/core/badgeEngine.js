@@ -18,6 +18,9 @@
 
 import { isFreeloader } from './reputationEngine.js';
 import { BADGE_ICONS } from '../assets/icons/badgeIcons.js';
+import { STORES, getAll, put, addToSyncQueue } from '../services/indexedDBService.js';
+import { generateId } from '../utils/helpers.js';
+import { calculateStreak } from './gamificationEngine.js';
 
 // ── Profile Badge Definitions ─────────────────────────────────────────────────
 
@@ -152,9 +155,10 @@ export const BOARD_BADGES = [
         t.status === 'done' && 
         (
           t.type === 'bug' || 
-          (Array.isArray(t.tags) && t.tags.some(tag => tag.toLowerCase() === 'bug')) ||
+          (Array.isArray(t.tags) && t.tags.some(tag => tag && String(tag).toLowerCase().includes('bug'))) ||
           (typeof t.tags === 'string' && t.tags.toLowerCase().includes('bug')) ||
-          (t.title && t.title.toLowerCase().includes('[bug]'))
+          (t.title && t.title.toLowerCase().includes('bug')) ||
+          (t.description && t.description.toLowerCase().includes('bug'))
         )
       ),
   },
@@ -307,4 +311,170 @@ export function getAllBadges() {
 export function getBadgeById(id) {
   return getAllBadges().find((b) => b.id === id) || null;
 }
+
+/**
+ * Evaluates all eligible badges for a user across all their tasks, streaks, comments,
+ * and boards, persisting any newly awarded badges to IndexedDB and the sync queue.
+ *
+ * @param {string} userId - User UID
+ * @returns {Promise<Array<object>>} Array of newly awarded badge definitions.
+ */
+export async function awardEligibleBadgesForUser(userId) {
+  if (!userId) return [];
+  try {
+    const allMembers = await getAll(STORES.MEMBERS);
+    const myMembers = allMembers.filter((m) => m.uid === userId);
+    const allTasks = await getAll(STORES.TASKS);
+    const allProofs = await getAll(STORES.PROOF_SUBMISSIONS);
+    const allReviews = await getAll(STORES.PEER_REVIEWS);
+    const allComments = await getAll(STORES.COMMENTS);
+    const existingBadges = await getAll(STORES.BADGES);
+
+    const myMemberIds = myMembers.map((m) => m.id);
+    const earnedBadgeTypes = new Set(
+      existingBadges
+        .filter((b) => myMemberIds.includes(b.memberId) || b.uid === userId)
+        .map((b) => b.type || b.id)
+    );
+
+    const newlyAwarded = [];
+
+    // 1. Evaluate board badges across all boards where user is a member
+    for (const mm of myMembers) {
+      const groupTasks = allTasks.filter((t) => t.groupId === mm.groupId);
+      const groupProofs = allProofs.filter((p) => p.groupId === mm.groupId);
+      const mReviews = allReviews.filter((r) => r.evaluateeId === mm.id || r.evaluateeUid === userId);
+      const avgScore = mReviews.length > 0
+        ? mReviews.reduce((sum, r) => sum + r.score, 0) / mReviews.length
+        : 3.0;
+
+      const boardBadges = evaluateBoardBadges({
+        memberId: mm.id,
+        reputation: 10,
+        tasks: groupTasks,
+        proofs: groupProofs,
+        contributionScore: 100,
+        avgPeerScore: avgScore,
+        completedCount: groupTasks.filter((t) => t.assignedTo === mm.id && t.status === 'done').length,
+        reviewCount: 0,
+        existingBadgeIds: [...earnedBadgeTypes]
+      });
+
+      for (const b of boardBadges) {
+        if (!earnedBadgeTypes.has(b.id)) {
+          earnedBadgeTypes.add(b.id);
+          const badgeDoc = {
+            id: generateId(),
+            memberId: mm.id,
+            groupId: mm.groupId,
+            uid: userId,
+            type: b.id,
+            earnedAt: Date.now()
+          };
+          await put(STORES.BADGES, badgeDoc);
+          await addToSyncQueue({ collection: 'badges', docId: badgeDoc.id, operation: 'add', data: badgeDoc });
+          newlyAwarded.push(b);
+        }
+      }
+    }
+
+    // 2. Evaluate streak badges
+    let maxStreak = 0;
+    for (const mm of myMembers) {
+      const groupTasks = allTasks.filter((t) => t.groupId === mm.groupId);
+      const streakInfo = calculateStreak(groupTasks, mm.id);
+      if (streakInfo.currentStreak > maxStreak) maxStreak = streakInfo.currentStreak;
+    }
+    const streakBadges = evaluateStreakBadges(maxStreak, [...earnedBadgeTypes]);
+    for (const b of streakBadges) {
+      if (!earnedBadgeTypes.has(b.id)) {
+        earnedBadgeTypes.add(b.id);
+        const defaultMember = myMembers[0];
+        const badgeDoc = {
+          id: generateId(),
+          memberId: defaultMember?.id || userId,
+          groupId: defaultMember?.groupId || null,
+          uid: userId,
+          type: b.id,
+          earnedAt: Date.now()
+        };
+        await put(STORES.BADGES, badgeDoc);
+        await addToSyncQueue({ collection: 'badges', docId: badgeDoc.id, operation: 'add', data: badgeDoc });
+        newlyAwarded.push(b);
+      }
+    }
+
+    // 3. Evaluate card completion badges (global count)
+    let totalDoneCount = 0;
+    for (const mm of myMembers) {
+      totalDoneCount += allTasks.filter((t) => t.assignedTo === mm.id && t.status === 'done').length;
+    }
+    const cardBadges = evaluateCardBadges(totalDoneCount, [...earnedBadgeTypes]);
+    for (const b of cardBadges) {
+      if (!earnedBadgeTypes.has(b.id)) {
+        earnedBadgeTypes.add(b.id);
+        const defaultMember = myMembers[0];
+        const badgeDoc = {
+          id: generateId(),
+          memberId: defaultMember?.id || userId,
+          groupId: defaultMember?.groupId || null,
+          uid: userId,
+          type: b.id,
+          earnedAt: Date.now()
+        };
+        await put(STORES.BADGES, badgeDoc);
+        await addToSyncQueue({ collection: 'badges', docId: badgeDoc.id, operation: 'add', data: badgeDoc });
+        newlyAwarded.push(b);
+      }
+    }
+
+    // 4. Evaluate comment badges
+    const totalComments = allComments.filter((c) => myMemberIds.includes(c.memberId) && !c.deleted).length;
+    const commentBadges = evaluateCommentBadges(totalComments, [...earnedBadgeTypes]);
+    for (const b of commentBadges) {
+      if (!earnedBadgeTypes.has(b.id)) {
+        earnedBadgeTypes.add(b.id);
+        const defaultMember = myMembers[0];
+        const badgeDoc = {
+          id: generateId(),
+          memberId: defaultMember?.id || userId,
+          groupId: defaultMember?.groupId || null,
+          uid: userId,
+          type: b.id,
+          earnedAt: Date.now()
+        };
+        await put(STORES.BADGES, badgeDoc);
+        await addToSyncQueue({ collection: 'badges', docId: badgeDoc.id, operation: 'add', data: badgeDoc });
+        newlyAwarded.push(b);
+      }
+    }
+
+    // 5. Evaluate hidden badges
+    const userDoneTasks = allTasks.filter((t) => myMemberIds.includes(t.assignedTo) && t.status === 'done');
+    const hiddenBadges = evaluateHiddenBadges(userDoneTasks, [...earnedBadgeTypes]);
+    for (const b of hiddenBadges) {
+      if (!earnedBadgeTypes.has(b.id)) {
+        earnedBadgeTypes.add(b.id);
+        const defaultMember = myMembers[0];
+        const badgeDoc = {
+          id: generateId(),
+          memberId: defaultMember?.id || userId,
+          groupId: defaultMember?.groupId || null,
+          uid: userId,
+          type: b.id,
+          earnedAt: Date.now()
+        };
+        await put(STORES.BADGES, badgeDoc);
+        await addToSyncQueue({ collection: 'badges', docId: badgeDoc.id, operation: 'add', data: badgeDoc });
+        newlyAwarded.push(b);
+      }
+    }
+
+    return newlyAwarded;
+  } catch (err) {
+    console.warn('[BadgeEngine] awardEligibleBadgesForUser error:', err);
+    return [];
+  }
+}
+
 
