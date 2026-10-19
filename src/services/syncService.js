@@ -41,13 +41,7 @@ export async function startSync(groupId) {
     return;
   }
   listenForChanges(groupId);
-
-  // Network reconnections trigger a flush
-  window.addEventListener('online', () => flushQueue());
   if (navigator.onLine) await flushQueue();
-
-  // Local actions trigger a flush (debounced to batch rapid writes)
-  window.addEventListener('sync-enqueued', handleSyncEnqueued);
 }
 
 let flushTimeout = null;
@@ -58,11 +52,16 @@ function handleSyncEnqueued() {
   }, 500); // 500ms debounce
 }
 
+// Global network reconnections and enqueued writes trigger flushes across all app views
+if (typeof window !== 'undefined') {
+  window.addEventListener('online', () => flushQueue());
+  window.addEventListener('sync-enqueued', handleSyncEnqueued);
+}
+
 export function stopSync() {
   unsubscribers.forEach((unsub) => unsub());
   unsubscribers = [];
   isSyncingGroup = null;
-  window.removeEventListener('sync-enqueued', handleSyncEnqueued);
 }
 
 /**

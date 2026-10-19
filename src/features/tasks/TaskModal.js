@@ -50,6 +50,16 @@ export function taskModalHTML(members, statuses) {
               </select>
             </div>
             <div class="form-group">
+              <label for="task-type-input">Task Type / Tag</label>
+              <select id="task-type-input">
+                <option value="task">📋 General Task</option>
+                <option value="bug">🐛 Bug / Issue</option>
+                <option value="feature">✨ Feature</option>
+                <option value="documentation">📝 Documentation</option>
+                <option value="research">🔬 Research</option>
+              </select>
+            </div>
+            <div class="form-group">
               <label for="task-weight-input">${getTerm('rewardLabel')}</label>
               <input type="number" id="task-weight-input" min="10" step="10" value="100" required />
             </div>
@@ -211,6 +221,10 @@ export function openTaskModal(task = null, defaultStatus = 'todo') {
   document.getElementById('task-title-input').value   = task?.title || '';
   document.getElementById('task-desc-input').value    = task?.description || '';
   document.getElementById('task-diff-input').value    = task?.difficulty || 'medium';
+  const taskTypeInput = document.getElementById('task-type-input');
+  if (taskTypeInput) {
+    taskTypeInput.value = task?.type || (Array.isArray(task?.tags) && task.tags[0]) || 'task';
+  }
   document.getElementById('task-weight-input').value  = task?.weight || 100;
   document.getElementById('task-deadline-input').value = task?.deadline || '';
 

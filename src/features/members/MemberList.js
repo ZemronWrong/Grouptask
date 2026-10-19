@@ -1,4 +1,6 @@
 import { STORES, get, getAllByIndex, put, remove, addToSyncQueue } from '../../services/indexedDBService.js';
+import { kickMember, leaveGroup } from '../../services/memberService.js';
+import { flushQueue } from '../../services/syncService.js';
 import { generateId, formatRelative, escapeHtml } from '../../utils/helpers.js';
 import { currentUser } from '../../services/authService.js';
 import { getTerm, getRoleName } from '../../services/themeService.js';
@@ -160,8 +162,8 @@ function memberCardHTML(data, maxRisk, isAdmin, isOwner, me, groupId, n) {
         <div style="display:flex; justify-content:space-between; align-items:center;">
           <span style="font-family:var(--font-heading); color:var(--text-muted); font-size:0.68rem;">
             ${pe.ratingsStatus === 'has_ratings'
-              ? `C<sub>i</sub>: ${pe.ciComponent.toFixed(1)} | Peer: ${pe.peerComponent.toFixed(1)} (${pe.ratingCount} ratings)`
-              : `Task-Based Only — ${pe.ratingCount < 2 ? `${pe.ratingCount} of 2 peer ratings received` : 'No ratings yet'}`
+              ? `C<sub>i</sub>: ${pe.ciComponent.toFixed(1)} | Peer: ${pe.peerComponent.toFixed(1)} (${pe.ratingCount} rating${pe.ratingCount !== 1 ? 's' : ''})`
+              : `Task-Based Only — ${pe.ratingCount} of ${pe.requiredRatings || 2} peer ratings received`
             }
           </span>
         </div>
@@ -213,20 +215,9 @@ function bindMemberEvents(groupId, membersList) {
       if (confirm('Are you sure you want to permanently remove this member from the group?')) {
         const memberId = e.target.dataset.memberId;
         const member = membersList.find(m => m.id === memberId);
-        
-        await remove(STORES.MEMBERS, memberId);
-        await addToSyncQueue({ collection: 'members', docId: memberId, operation: 'delete', data: { id: memberId, groupId } });
-
-        // Notify member they were kicked
         if (member) {
-          await notify({
-            uid: member.uid, type: 'member_left',
-            title: 'Removed from Group',
-            message: 'You have been removed from the group.',
-            icon: ICONS.door, groupId
-          });
+          await kickMember(member, groupId);
         }
-        
         await renderMembers(groupId);
       }
     });
@@ -295,6 +286,7 @@ export function bindSidebarEvents(groupId) {
       const gId = e.currentTarget.dataset.groupId;
       await remove(STORES.GROUPS, gId);
       await addToSyncQueue({ collection: 'groups', docId: gId, operation: 'delete' });
+      await flushQueue();
       navigate('#/dashboard');
     }
   });
@@ -305,8 +297,7 @@ export function bindSidebarEvents(groupId) {
       const membersList = await getAllByIndex(STORES.MEMBERS, 'groupId', groupId);
       const me = membersList.find(m => m.uid === user.uid);
       if (me) {
-        await remove(STORES.MEMBERS, me.id);
-        await addToSyncQueue({ collection: 'members', docId: me.id, operation: 'delete' });
+        await leaveGroup(groupId, me);
       }
       navigate('#/dashboard');
     }

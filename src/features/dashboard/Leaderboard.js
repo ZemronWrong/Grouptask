@@ -329,7 +329,7 @@ export async function renderEvaluation(groupId) {
             const existingReview = myReviews.find(r => r.evaluateeId === m.id);
             const score = existingReview?.score || 0;
             return `
-              <div class="eval-card">
+              <div class="eval-card" style="${existingReview ? 'border-color:rgba(34,197,94,0.35); background:linear-gradient(to bottom, rgba(34,197,94,0.03), transparent);' : ''}">
                 <div class="eval-card-header">
                   <div style="display:flex; align-items:center; gap:12px;">
                     <div class="avatar">${escapeHtml(m.displayName?.[0] || '?')}</div>
@@ -337,13 +337,23 @@ export async function renderEvaluation(groupId) {
                       <h3 style="margin:0; font-size:1.1rem; color:var(--text);">${escapeHtml(m.displayName)}</h3>
                     </div>
                   </div>
-                  ${existingReview ? `<div class="eval-pe-score">Rated: ${score}/5</div>` : `<div style="font-size:0.75rem; color:var(--warning); text-transform:uppercase; font-family:var(--font-heading);">PENDING RATING</div>`}
+                  ${existingReview 
+                    ? `<div style="display:flex; align-items:center; gap:8px;">
+                         <span style="background:rgba(34,197,94,0.15); color:#22c55e; border:1px solid rgba(34,197,94,0.3); font-size:0.72rem; font-weight:700; padding:4px 8px; border-radius:6px; display:inline-flex; align-items:center; gap:4px; font-family:var(--font-heading);">
+                           ✓ EVALUATION SUBMITTED
+                         </span>
+                         <div class="eval-pe-score" style="color:var(--primary); font-weight:700;">Rated: ${score}/5 ⭐</div>
+                       </div>` 
+                    : `<div style="font-size:0.72rem; color:var(--warning); background:rgba(234,179,8,0.12); padding:4px 8px; border-radius:6px; border:1px solid rgba(234,179,8,0.3); text-transform:uppercase; font-family:var(--font-heading); font-weight:700;">⚠️ PENDING RATING</div>`
+                  }
                 </div>
                 
+                ${existingReview ? `<div style="font-size:0.78rem; color:#22c55e; margin: 8px 0 12px 0; display:flex; align-items:center; gap:6px;">✓ You already evaluated this teammate. You can update your rating or feedback below:</div>` : ''}
+
                 <form class="eval-form" data-evaluatee-id="${m.id}">
                   <div class="form-group" style="margin-bottom:12px;">
                     <label>Rating (1-5 Stars)</label>
-                    <div style="display:flex; gap:8px;">
+                    <div style="display:flex; gap:8px; flex-wrap:wrap;">
                       ${[1,2,3,4,5].map(star => `
                         <label style="cursor:pointer; display:flex; align-items:center; gap:4px; color:var(--text); font-family:var(--font-heading);">
                           <input type="radio" name="score_${m.id}" value="${star}" ${score === star ? 'checked' : ''} required />
@@ -357,7 +367,7 @@ export async function renderEvaluation(groupId) {
                     <textarea name="comment_${m.id}" rows="2" placeholder="How was working with them?">${existingReview?.comment || ''}</textarea>
                   </div>
                   <div style="text-align:right;">
-                    <button type="submit" class="btn btn-primary btn-sm">Submit Evaluation</button>
+                    <button type="submit" class="btn ${existingReview ? 'btn-secondary' : 'btn-primary'} btn-sm">${existingReview ? 'Update Evaluation' : 'Submit Evaluation'}</button>
                   </div>
                 </form>
               </div>

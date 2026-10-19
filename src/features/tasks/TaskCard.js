@@ -35,11 +35,17 @@ export function taskCardHTML(task, members, proofs, comments, viewIsAdmin, me) {
     proofBadge = `<button class="btn btn-primary btn-block btn-self-assign" data-task-id="${task.id}" style="margin-bottom:12px; font-size:0.7rem;">${getTerm('acceptTask')}</button>`;
   }
 
+  const isBug = task.type === 'bug' || (Array.isArray(task.tags) && task.tags.some(t => t.toLowerCase() === 'bug'));
+  const tagBadge = isBug
+    ? `<span class="badge" style="background:rgba(239,68,68,0.15); color:#ef4444; border:1px solid rgba(239,68,68,0.3); font-weight:600;">🐛 Bug</span>`
+    : (task.type && task.type !== 'task' ? `<span class="badge badge-subtle">${escapeHtml(task.type)}</span>` : '');
+
   return `
     <div class="task-card ${viewIsAdmin ? 'draggable' : ''}" ${viewIsAdmin ? 'draggable="true"' : ''} data-task-id="${task.id}">
       <div class="task-card-top">
         <div class="task-badges">
           <span class="badge ${diffClass}">${escapeHtml(task.difficulty || 'MEDIUM')}</span>
+          ${tagBadge}
           ${task.deadline ? `<span class="task-deadline ${deadlineClass}">⏳ ${formatRelative(task.deadline)}</span>` : ''}
           ${commentCount > 0 ? `<span class="badge badge-subtle">💬 ${commentCount}</span>` : ''}
         </div>

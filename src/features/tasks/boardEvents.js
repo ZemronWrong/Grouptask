@@ -10,6 +10,7 @@
 import { STORES, put, remove, add, addToSyncQueue, get, getAllByIndex, getAll } from '../../services/indexedDBService.js';
 import { generateId } from '../../utils/helpers.js';
 import { currentUser } from '../../services/authService.js';
+import { kickMember } from '../../services/memberService.js';
 import { notify } from '../../services/notificationService.js';
 import { logActivity } from '../../services/activityLogService.js';
 import { openTaskModal, openTaskDetailModal } from './TaskModal.js';
@@ -240,8 +241,7 @@ export function bindBoardEvents(boardContext, rerenderBoard) {
     if (!member) return;
     if (role === 'remove') {
       if (confirm('Remove this member?')) {
-        await remove(STORES.MEMBERS, memberId);
-        await addToSyncQueue({ collection: 'members', docId: memberId, operation: 'delete', data: { id: memberId, groupId } });
+        await kickMember(member, groupId);
       } else {
         sel.value = member.role;
       }
@@ -270,6 +270,8 @@ export async function saveTask(groupId, members) {
     title:       document.getElementById('task-title-input').value.trim(),
     description: document.getElementById('task-desc-input').value.trim(),
     difficulty:  document.getElementById('task-diff-input').value,
+    type:        document.getElementById('task-type-input')?.value || 'task',
+    tags:        [document.getElementById('task-type-input')?.value || 'task'],
     weight:      Number(document.getElementById('task-weight-input').value) || 100,
     deadline:    document.getElementById('task-deadline-input').value || null,
     assignedTo, status,

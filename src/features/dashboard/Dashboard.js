@@ -9,7 +9,8 @@
 import { currentUser, signOut } from '../../services/authService.js';
 import { navigate } from '../../services/router.js';
 import { STORES, get, getAllByIndex, remove, addToSyncQueue } from '../../services/indexedDBService.js';
-import { getMembershipsForUser, createGroup, joinGroupByCode } from '../../services/memberService.js';
+import { getMembershipsForUser, createGroup, joinGroupByCode, leaveGroup } from '../../services/memberService.js';
+import { flushQueue } from '../../services/syncService.js';
 import { getGroupTasks } from '../../services/taskService.js';
 import { escapeHtml, formatRelative, formatTimeAgo } from '../../utils/helpers.js';
 import { getTerm } from '../../services/themeService.js';
@@ -69,7 +70,34 @@ function renderPulsePanel(group, tasks, recentEvents, members) {
   const health = groupHealth(totalEvents, doneThisWeek, tasks.length);
   const doneCount = tasks.filter(t => t.status === 'done').length;
   const progress = tasks.length > 0 ? Math.round((doneCount / tasks.length) * 100) : 0;
-  const activeMembers = [...new Set(recentEvents.slice(0, 20).map(e => e.actorId).filter(Boolean))];
+
+  // Collect all unique members with activity or task contributions in the last 7 days
+  const activeMemberIds = new Set();
+  const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+
+  for (const e of recentEvents) {
+    if (e.actorId) {
+      const m = members.find(m => m.id === e.actorId || m.uid === e.actorId);
+      if (m) activeMemberIds.add(m.id);
+    } else if (e.actorName) {
+      const m = members.find(m => m.displayName === e.actorName);
+      if (m) activeMemberIds.add(m.id);
+    }
+  }
+
+  for (const t of tasks) {
+    if (t.updatedAt && t.updatedAt >= sevenDaysAgo && t.assignedTo) {
+      const m = members.find(m => m.id === t.assignedTo || m.uid === t.assignedTo);
+      if (m) activeMemberIds.add(m.id);
+    }
+    if (t.completedAt && t.completedAt >= sevenDaysAgo && t.assignedTo) {
+      const m = members.find(m => m.id === t.assignedTo || m.uid === t.assignedTo);
+      if (m) activeMemberIds.add(m.id);
+    }
+  }
+
+  const activeMembers = [...activeMemberIds].map(id => members.find(m => m.id === id)).filter(Boolean);
+  const displayActiveMembers = activeMembers.length > 0 ? activeMembers : members;
 
   const activityFeed = recentEvents.slice(0, 8);
   
@@ -145,20 +173,18 @@ function renderPulsePanel(group, tasks, recentEvents, members) {
       </div>
 
       <!-- Active Members -->
-      ${activeMembers.length > 0 ? `
+      ${displayActiveMembers.length > 0 ? `
         <div class="pulse-activity-section">
           <div class="pulse-section-title">${ICONS.users} Active This Week</div>
           <div class="pulse-active-members">
-            ${activeMembers.slice(0, 6).map(actorId => {
-              const m = members.find(m => m.id === actorId);
-              if (!m) return '';
+            ${displayActiveMembers.slice(0, 6).map(m => {
               const avatarContent = (m.avatarType === 'custom' && m.avatar) 
                 ? `<img src="${m.avatar}" alt="Avatar" style="width:100%;height:100%;border-radius:50%;object-fit:cover;">`
                 : (m.avatarType === 'default' && m.avatarEmoji) ? m.avatarEmoji
-                : escapeHtml(m.displayName[0] || '?');
+                : escapeHtml(m.displayName?.[0] || '?');
               return `<div class="pulse-avatar" title="${escapeHtml(m.displayName)}">${avatarContent}</div>`;
             }).join('')}
-            ${activeMembers.length > 6 ? `<div class="pulse-avatar pulse-avatar-more">+${activeMembers.length - 6}</div>` : ''}
+            ${displayActiveMembers.length > 6 ? `<div class="pulse-avatar pulse-avatar-more">+${displayActiveMembers.length - 6}</div>` : ''}
           </div>
         </div>
       ` : ''}
@@ -346,6 +372,7 @@ async function loadPulse(group, allGroups) {
       const gId = e.currentTarget.dataset.groupId;
       await remove(STORES.GROUPS, gId);
       await addToSyncQueue({ collection: 'groups', docId: gId, operation: 'delete' });
+      await flushQueue();
       navigate('#/dashboard');
       window.location.reload(); // Refresh to remove from list
     }
@@ -357,8 +384,7 @@ async function loadPulse(group, allGroups) {
       const membersList = await getAllByIndex(STORES.MEMBERS, 'groupId', group.id);
       const me = membersList.find(m => m.uid === user.uid);
       if (me) {
-        await remove(STORES.MEMBERS, me.id);
-        await addToSyncQueue({ collection: 'members', docId: me.id, operation: 'delete' });
+        await leaveGroup(group.id, me);
       }
       navigate('#/dashboard');
       window.location.reload(); // Refresh to remove from list

@@ -1804,6 +1804,13 @@ textarea { resize: vertical; }
   box-shadow: 0 0 12px var(--primary-glow);
 }
 
+.badge-card-icon-wrap .svg-icon,
+.badge-card-icon .svg-icon {
+  width: 24px;
+  height: 24px;
+  display: block;
+}
+
 .badge-card-title-wrap {
   flex: 1;
   min-width: 0;

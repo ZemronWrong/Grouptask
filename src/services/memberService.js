@@ -1,4 +1,5 @@
 import { STORES, add, put, get, remove, getAll, getAllByIndex, addToSyncQueue } from './indexedDBService.js';
+import { flushQueue } from './syncService.js';
 import { generateId, generateInviteCode } from '../utils/helpers.js';
 import { notify } from './notificationService.js';
 import { logActivity } from './activityLogService.js';
@@ -115,6 +116,19 @@ export async function joinGroupByCode({ inviteCode, uid, displayName }) {
 }
 
 export async function kickMember(member, groupId) {
+  // 1. Unassign any tasks that belonged to this member on this board
+  const tasks = await getAllByIndex(STORES.TASKS, 'groupId', groupId);
+  for (const t of tasks) {
+    if (t.assignedTo === member.id) {
+      t.assignedTo = null;
+      if (t.status === 'in-progress') t.status = 'todo';
+      t.updatedAt = Date.now();
+      await put(STORES.TASKS, t);
+      await addToSyncQueue({ collection: 'tasks', docId: t.id, operation: 'update', data: t });
+    }
+  }
+
+  // 2. Remove member locally and queue Firestore deletion
   await remove(STORES.MEMBERS, member.id);
   await addToSyncQueue({
     collection: 'members',
@@ -122,6 +136,18 @@ export async function kickMember(member, groupId) {
     operation: 'delete',
     data: { id: member.id, groupId },
   });
+
+  // 3. Log activity
+  await logActivity({
+    groupId,
+    type: 'member_removed',
+    actorId: member.id,
+    actorName: member.displayName || 'Someone',
+    description: `${member.displayName || 'A member'} was removed from the group`,
+    meta: { memberId: member.id },
+  });
+
+  // 4. Send notification if they have a uid
   if (member.uid) {
     await notify({
       uid: member.uid,
@@ -132,6 +158,47 @@ export async function kickMember(member, groupId) {
       groupId,
     });
   }
+
+  // 5. Immediately flush queue so remote users receive the deletion immediately
+  await flushQueue();
+}
+
+export async function leaveGroup(groupId, member) {
+  if (!member) return;
+
+  // 1. Unassign any tasks that belonged to this member on this board
+  const tasks = await getAllByIndex(STORES.TASKS, 'groupId', groupId);
+  for (const t of tasks) {
+    if (t.assignedTo === member.id) {
+      t.assignedTo = null;
+      if (t.status === 'in-progress') t.status = 'todo';
+      t.updatedAt = Date.now();
+      await put(STORES.TASKS, t);
+      await addToSyncQueue({ collection: 'tasks', docId: t.id, operation: 'update', data: t });
+    }
+  }
+
+  // 2. Remove member locally and queue Firestore deletion
+  await remove(STORES.MEMBERS, member.id);
+  await addToSyncQueue({
+    collection: 'members',
+    docId: member.id,
+    operation: 'delete',
+    data: { id: member.id, groupId },
+  });
+
+  // 3. Log activity
+  await logActivity({
+    groupId,
+    type: 'member_removed',
+    actorId: member.id,
+    actorName: member.displayName || 'Someone',
+    description: `${member.displayName || 'A member'} left the group`,
+    meta: { memberId: member.id },
+  });
+
+  // 4. Immediately flush queue to ensure Firestore delete completes
+  await flushQueue();
 }
 
 export async function setMemberRestricted(member, restricted) {

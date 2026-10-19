@@ -136,7 +136,10 @@ export function calculatePEScore(completedWeight, groupDoneWeight, groupMemberCo
 
   const ratings    = Array.isArray(peerRatings) ? peerRatings : [];
   const m_i        = ratings.length;
-  const hasRatings = m_i >= MIN_RATINGS_THRESHOLD;
+  // If team size is 2, a member only has 1 peer. Threshold adapts so 2-person teams can still activate PE.
+  const n          = typeof groupMemberCount === 'number' && groupMemberCount > 0 ? groupMemberCount : 1;
+  const minRequired = Math.min(MIN_RATINGS_THRESHOLD, Math.max(1, n - 1));
+  const hasRatings = m_i >= minRequired;
   const avg        = averagePeerRating(ratings);
 
   let peScore, csComponent, peerComponent;
@@ -148,7 +151,7 @@ export function calculatePEScore(completedWeight, groupDoneWeight, groupMemberCo
     peScore       = Math.round((csComponent + peerComponent) * 100) / 100;
   } else {
     // Fallback: score equals the contribution component only (no penalty)
-    // Per manuscript Page 31: "PE_i = C_i when m_i < 2"
+    // Per manuscript Page 31: "PE_i = C_i when m_i < minRequired"
     csComponent   = Math.round(ci * 100) / 100;
     peerComponent = 0;
     peScore       = csComponent;
@@ -163,6 +166,7 @@ export function calculatePEScore(completedWeight, groupDoneWeight, groupMemberCo
     peerComponent,
     avgPeerRating: avg,
     ratingCount:   m_i,
+    requiredRatings: minRequired,
     // Transparent status string — must be displayed in the UI so evaluators
     // understand why a score is at full C_i rather than the 70/30 composite.
     ratingsStatus: hasRatings ? 'has_ratings' : 'task_based_only',
