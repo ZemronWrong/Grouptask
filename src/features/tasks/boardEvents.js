@@ -8,7 +8,7 @@
  */
 
 import { STORES, put, remove, add, addToSyncQueue, get, getAllByIndex, getAll } from '../../services/indexedDBService.js';
-import { generateId, showToast } from '../../utils/helpers.js';
+import { generateId } from '../../utils/helpers.js';
 import { currentUser } from '../../services/authService.js';
 import { kickMember } from '../../services/memberService.js';
 import { notify } from '../../services/notificationService.js';
@@ -20,6 +20,13 @@ import { evaluateBoardBadges, evaluateCardBadges, evaluateHiddenBadges, evaluate
 import { calculateStreak } from '../../core/gamificationEngine.js';
 import { openMemberPopup } from './TaskComments.js';
 
+function showToast(msg) {
+  const t = document.createElement('div');
+  t.className = 'toast';
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 2500);
+}
 
 // ── Public: wire all board event listeners (call once per session) ────────────
 
