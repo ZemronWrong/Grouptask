@@ -68,8 +68,10 @@ service cloud.firestore {
     // A user can only create their own membership record.
     // Only the member themselves or a group admin can update/delete.
     match /members/{memberId} {
-      allow read: if isAuthed() &&
-        isMemberOfGroup(resource.data.groupId);
+      allow read: if isAuthed() && (
+        resource.data.uid == request.auth.uid ||
+        isMemberOfGroup(resource.data.groupId)
+      );
       allow create: if isAuthed() &&
         request.resource.data.uid == request.auth.uid &&
         'groupId' in request.resource.data;
@@ -151,6 +153,7 @@ service cloud.firestore {
     // Group admin CAN read all reviews for governance/oversight.
     match /peerReviews/{reviewId} {
       allow read: if isAuthed() && (
+        isMemberOfGroup(resource.data.groupId) ||
         resource.data.reviewerId == request.auth.uid ||
         isGroupAdmin(resource.data.groupId)
       );

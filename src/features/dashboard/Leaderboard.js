@@ -1,4 +1,4 @@
-import { STORES, get, getAllByIndex, put, addToSyncQueue } from '../../services/indexedDBService.js';
+import { STORES, get, getAll, getAllByIndex, put, addToSyncQueue } from '../../services/indexedDBService.js';
 import { calculateBoardPoints, recordEvent, EVENT_TYPES } from '../../core/eventEngine.js';
 import { calculateAllContributionScores } from '../../core/scoringEngine.js';
 import { calculateAllPEScores } from '../../core/peerEvaluationEngine.js';
@@ -470,7 +470,6 @@ export async function renderEvaluation(groupId) {
       if (evaluatee) {
         evaluatee.averagePeerScore = newAvg;
         await put(STORES.MEMBERS, evaluatee);
-        await addToSyncQueue({ collection: 'members', docId: evaluatee.id, operation: 'update', data: evaluatee });
       }
 
       // Record Peer Eval Rep Event
