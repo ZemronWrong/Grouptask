@@ -13,6 +13,7 @@ import { renderMembers } from './features/members/MemberList.js';
 import { renderAudit } from './features/audit/AuditHistory.js';
 import { renderProfile } from './features/profile/Profile.js';
 import { renderSettings } from './features/profile/Settings.js';
+import { bootstrapUserData } from './services/memberService.js';
 
 function requireAuth(handler) {
   return async (params) => {
@@ -66,13 +67,18 @@ export async function boot() {
     await renderAudit(groupId);
   }));
 
-  onAuthChange((user) => {
+  onAuthChange(async (user) => {
     const path = window.location.hash.slice(1) || '/login';
     if (!user && path !== '/login' && path !== '/register') {
       stopSync();
       navigate('#/login');
     } else if (user && (path === '/login' || path === '/register' || path === '')) {
+      // Bootstrap data from Firestore for users on a new/fresh device
+      await bootstrapUserData(user.uid);
       navigate('#/dashboard');
+    } else if (user) {
+      // Also bootstrap on any auth refresh (e.g. page reload on a new device)
+      await bootstrapUserData(user.uid);
     }
   });
 

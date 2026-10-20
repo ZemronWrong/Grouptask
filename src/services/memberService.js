@@ -6,6 +6,8 @@ import { logActivity } from './activityLogService.js';
 import { fsDb, isMock } from '../config/firebaseConfig.js';
 import {
   collection,
+  doc as fsDoc,
+  getDoc,
   query,
   where,
   getDocs,
@@ -18,6 +20,66 @@ export function getGroupMembers(groupId) {
 export async function getMembershipsForUser(uid) {
   const all = await getAll(STORES.MEMBERS);
   return all.filter((m) => m.uid === uid);
+}
+
+/**
+ * Bootstraps a returning user's data from Firestore into IndexedDB.
+ *
+ * Called once on login/auth-change when the local IndexedDB is empty.
+ * Queries Firestore for all member records belonging to this user,
+ * then fetches each associated group and seeds both into IndexedDB so
+ * the Dashboard shows the correct boards even on a new device.
+ *
+ * @param {string} uid - Firebase Auth UID of the signed-in user.
+ * @returns {Promise<void>}
+ */
+export async function bootstrapUserData(uid) {
+  if (!uid || isMock) return;
+
+  // Only bootstrap if local DB appears empty for this user
+  const localMembers = await getAll(STORES.MEMBERS);
+  const myLocalMembers = localMembers.filter((m) => m.uid === uid);
+  if (myLocalMembers.length > 0) return; // Already have local data, skip
+
+  try {
+    // 1. Fetch all member records for this user from Firestore
+    const membersQ = query(
+      collection(fsDb, 'members'),
+      where('uid', '==', uid)
+    );
+    const membersSnap = await getDocs(membersQ);
+    if (membersSnap.empty) return;
+
+    const groupIds = new Set();
+    for (const memberDoc of membersSnap.docs) {
+      const member = { id: memberDoc.id, ...memberDoc.data() };
+      // Normalize Firestore Timestamps to ms numbers
+      if (member.joinedAt?.seconds) member.joinedAt = member.joinedAt.seconds * 1000;
+      await put(STORES.MEMBERS, member);
+      if (member.groupId) groupIds.add(member.groupId);
+    }
+
+    // 2. Fetch each associated group document
+    for (const groupId of groupIds) {
+      const localGroup = await get(STORES.GROUPS, groupId);
+      if (localGroup) continue; // Already seeded
+      try {
+        const groupSnap = await getDoc(fsDoc(fsDb, 'groups', groupId));
+        if (groupSnap.exists()) {
+          const group = { id: groupSnap.id, ...groupSnap.data() };
+          if (group.createdAt?.seconds) group.createdAt = group.createdAt.seconds * 1000;
+          if (group.updatedAt?.seconds) group.updatedAt = group.updatedAt.seconds * 1000;
+          await put(STORES.GROUPS, group);
+        }
+      } catch (err) {
+        console.warn(`[bootstrap] Could not fetch group ${groupId}:`, err.message);
+      }
+    }
+
+    console.info(`[Bootstrap] Seeded ${membersSnap.size} memberships and ${groupIds.size} groups from Firestore.`);
+  } catch (err) {
+    console.warn('[Bootstrap] Failed to bootstrap user data from Firestore:', err.message);
+  }
 }
 
 export async function createGroup({ name, createdBy, displayName }) {
