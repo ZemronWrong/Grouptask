@@ -1,5 +1,5 @@
 import { STORES, add, put, get, remove, getAll, getAllByIndex, addToSyncQueue } from './indexedDBService.js';
-import { flushQueue } from './syncService.js';
+import { flushQueue, fetchGroupDataOnce } from './syncService.js';
 import { generateId, generateInviteCode } from '../utils/helpers.js';
 import { notify } from './notificationService.js';
 import { logActivity } from './activityLogService.js';
@@ -77,6 +77,10 @@ export async function bootstrapUserData(uid) {
     }
 
     console.info(`[Bootstrap] Seeded ${membersSnap.size} memberships and ${groupIds.size} groups from Firestore.`);
+
+    // 3. Pull all group data (tasks, badges, etc.) for every group into IndexedDB
+    await Promise.all([...groupIds].map((gId) => fetchGroupDataOnce(gId)));
+    console.info('[Bootstrap] Full group data pulled from Firestore.');
   } catch (err) {
     console.warn('[Bootstrap] Failed to bootstrap user data from Firestore:', err.message);
   }
@@ -153,6 +157,11 @@ export async function joinGroupByCode({ inviteCode, uid, displayName }) {
   await add(STORES.MEMBERS, member);
   await addToSyncQueue({ collection: 'members', docId: member.id, operation: 'add', data: member });
 
+  // Flush immediately so the new membership reaches Firestore,
+  // then do a one-shot pull to seed all existing group data into local IndexedDB
+  await flushQueue();
+  await fetchGroupDataOnce(group.id);
+
   // Log activity
   await logActivity({
     groupId:     group.id,
@@ -175,6 +184,76 @@ export async function joinGroupByCode({ inviteCode, uid, displayName }) {
     });
   }
   return group;
+}
+
+/**
+ * Sends a join request to a group instead of immediately joining.
+ * The request is stored in the group document's `joinRequests` array
+ * so the board owner can review it in the Share → Join Requests tab.
+ */
+export async function sendJoinRequest({ inviteCode, uid, displayName, email }) {
+  const normalizedCode = inviteCode.trim().toUpperCase();
+
+  // 1. Find the group
+  let group = null;
+  const localGroups = await getAll(STORES.GROUPS);
+  group = localGroups.find((g) => g.inviteCode?.toUpperCase() === normalizedCode);
+
+  if (!group && !isMock) {
+    try {
+      const q = query(collection(fsDb, 'groups'), where('inviteCode', '==', normalizedCode));
+      const snapshot = await getDocs(q);
+      if (!snapshot.empty) {
+        group = { id: snapshot.docs[0].id, ...snapshot.docs[0].data() };
+        await put(STORES.GROUPS, group);
+      }
+    } catch (err) {
+      console.warn('[sendJoinRequest] Firestore fallback failed:', err.message);
+    }
+  }
+
+  if (!group) throw new Error('Invite code not found. Double-check the code and try again.');
+
+  // 2. Check if already a member
+  const existing = await getAllByIndex(STORES.MEMBERS, 'groupId', group.id);
+  if (existing.some((m) => m.uid === uid)) {
+    throw new Error('You are already a member of this board.');
+  }
+
+  // 3. Check for duplicate pending request
+  const existingReqs = group.joinRequests || [];
+  if (existingReqs.some((r) => r.uid === uid)) {
+    throw new Error('You already have a pending join request for this board.');
+  }
+
+  // 4. Append the request to the group document
+  const request = {
+    id: `${group.id}_req_${uid}`,
+    uid,
+    displayName,
+    email: email || null,
+    requestedAt: Date.now(),
+    status: 'pending',
+  };
+  const updatedGroup = { ...group, joinRequests: [...existingReqs, request], updatedAt: Date.now() };
+  await put(STORES.GROUPS, updatedGroup);
+  await addToSyncQueue({ collection: 'groups', docId: group.id, operation: 'update', data: updatedGroup });
+  await flushQueue();
+
+  // 5. Notify owners/co-admins
+  for (const m of existing.filter((x) => x.role === 'owner' || x.role === 'co-admin')) {
+    await notify({
+      uid: m.uid,
+      type: 'join_request',
+      title: 'New Join Request',
+      message: `${displayName} wants to join ${group.name}.`,
+      icon: '📬',
+      actionLink: `#/group/${group.id}`,
+      groupId: group.id,
+    });
+  }
+
+  return { group, request };
 }
 
 export async function kickMember(member, groupId) {

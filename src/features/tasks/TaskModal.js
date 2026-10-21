@@ -199,8 +199,8 @@ export function shareModalHTML(members, group, profileMap = {}) {
                   <div style="display:flex; flex-direction:column; gap:6px; align-items:flex-end;">
                     <select class="join-request-role-select" data-request-id="${req.id}" style="font-size:0.72rem; padding:3px 6px; border-radius:6px; border:1px solid var(--border); background:var(--bg-input); color:var(--text);">
                       <option value="member" selected>Role: Member</option>
-                      <option value="co-admin">Role: Co-owner</option>
                       <option value="viewer">Role: Only View</option>
+                      <option value="co-admin">Role: Co-owner</option>
                     </select>
                     <div style="display:flex; gap:6px;">
                       <button class="btn btn-primary btn-sm btn-accept-request" data-request-id="${req.id}" style="font-size:0.72rem; padding:3px 10px;">Accept</button>

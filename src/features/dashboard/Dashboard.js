@@ -9,7 +9,7 @@
 import { currentUser, signOut } from '../../services/authService.js';
 import { navigate } from '../../services/router.js';
 import { STORES, get, getAllByIndex, remove, addToSyncQueue } from '../../services/indexedDBService.js';
-import { getMembershipsForUser, createGroup, joinGroupByCode, leaveGroup } from '../../services/memberService.js';
+import { getMembershipsForUser, createGroup, joinGroupByCode, leaveGroup, sendJoinRequest } from '../../services/memberService.js';
 import { flushQueue } from '../../services/syncService.js';
 import { getGroupTasks } from '../../services/taskService.js';
 import { escapeHtml, formatRelative, formatTimeAgo } from '../../utils/helpers.js';
@@ -419,13 +419,22 @@ function bindCreateJoin(user, groups, app) {
     app.querySelector(`#${id}`)?.addEventListener('click', () => {
       showModal({
         title: getTerm('joinGroup'),
-        confirmLabel: 'Join',
+        confirmLabel: 'Join Directly',
         body: `<div class="form-group"><label for="join-code">Invite code</label>
-          <input id="join-code" type="text" placeholder="ABC12345" /></div>
+          <input id="join-code" type="text" placeholder="ABC12345" />
+          </div>
+          <div style="display:flex; gap:8px; margin-top:12px;">
+            <button class="btn btn-secondary btn-sm" type="button" id="btn-request-join" style="flex:1; font-weight:600;">📬 Request to Join</button>
+          </div>
+          <p style="font-size:0.75rem; color:var(--text-muted); margin-top:8px;">
+            <strong>Join Directly</strong> — adds you immediately using the invite code.<br>
+            <strong>Request to Join</strong> — sends a request to the board owner for approval.
+          </p>
           <p class="auth-error" id="join-error"></p>`,
         onConfirm: async (overlay) => {
           const code = overlay.querySelector('#join-code').value.trim();
           const errorEl = overlay.querySelector('#join-error');
+          if (!code) { errorEl.textContent = 'Please enter an invite code.'; return true; }
           try {
             const pf = await get(STORES.USER_PROFILES, user.uid);
             const group = await joinGroupByCode({ inviteCode: code, uid: user.uid, displayName: pf?.displayName || user.displayName || user.email });
@@ -436,6 +445,34 @@ function bindCreateJoin(user, groups, app) {
           }
         },
       });
+
+      // Bind "Request to Join" button after modal renders
+      setTimeout(() => {
+        document.getElementById('btn-request-join')?.addEventListener('click', async () => {
+          const overlay = document.querySelector('.modal-overlay');
+          const code = overlay?.querySelector('#join-code')?.value.trim();
+          const errorEl = overlay?.querySelector('#join-error');
+          if (!code) { if (errorEl) errorEl.textContent = 'Please enter an invite code.'; return; }
+          try {
+            const pf = await get(STORES.USER_PROFILES, user.uid);
+            await sendJoinRequest({
+              inviteCode: code,
+              uid: user.uid,
+              displayName: pf?.displayName || user.displayName || user.email,
+              email: pf?.email || user.email || null,
+            });
+            overlay?.remove();
+            // Show success toast
+            const t = document.createElement('div');
+            t.className = 'toast';
+            t.textContent = '📬 Join request sent! The board owner will review it.';
+            document.body.appendChild(t);
+            setTimeout(() => t.remove(), 3500);
+          } catch (err) {
+            if (errorEl) errorEl.textContent = err.message || 'Could not send request.';
+          }
+        });
+      }, 50);
     });
   };
 

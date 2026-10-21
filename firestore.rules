@@ -60,7 +60,12 @@ service cloud.firestore {
       allow read: if isAuthed();
       allow create: if isAuthed() &&
         request.resource.data.createdBy == request.auth.uid;
-      allow update, delete: if isGroupAdmin(groupId);
+      // Admin can do any update. Any authed user can update ONLY to add a join request
+      // (the joinRequests field grows — no other fields are touched).
+      allow update: if isGroupAdmin(groupId) ||
+        (isAuthed() &&
+         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['joinRequests', 'updatedAt']));
+      allow delete: if isGroupAdmin(groupId);
     }
 
     // ── Members ──────────────────────────────────────────────────────

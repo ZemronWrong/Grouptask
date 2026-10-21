@@ -10,6 +10,7 @@ import {
   doc as fsDoc,
   setDoc,
   deleteDoc,
+  getDocs,
   onSnapshot,
   query,
   where,
@@ -42,6 +43,37 @@ export async function startSync(groupId) {
   }
   listenForChanges(groupId);
   if (navigator.onLine) await flushQueue();
+}
+
+/**
+ * One-shot pull of ALL documents in every group collection from Firestore
+ * into IndexedDB. Used after joining a group or on new-device bootstrap
+ * so the UI has existing data before rendering.
+ *
+ * @param {string} groupId
+ */
+export async function fetchGroupDataOnce(groupId) {
+  if (isMock || !navigator.onLine) return;
+  const collections = [
+    'tasks', 'members', 'peerRatings', 'peerReviews',
+    'badges', 'points', 'proofSubmissions', 'events', 'comments',
+  ];
+  try {
+    await Promise.all(collections.map(async (colName) => {
+      const q = query(fsCollection(fsDb, colName), where('groupId', '==', groupId));
+      const snap = await getDocs(q);
+      const storeName = storeForCollection(colName);
+      for (const docSnap of snap.docs) {
+        const remoteDoc = normalizeTimestamps({ id: docSnap.id, ...docSnap.data() });
+        const localDoc = await get(storeName, remoteDoc.id).catch(() => null);
+        const { winner, doc } = resolveConflict(localDoc, remoteDoc);
+        if (winner === 'remote' && doc) await put(storeName, doc);
+      }
+    }));
+    console.info(`[Sync] fetchGroupDataOnce complete for group ${groupId}`);
+  } catch (err) {
+    console.warn('[Sync] fetchGroupDataOnce failed:', err.message);
+  }
 }
 
 let flushTimeout = null;
@@ -125,6 +157,22 @@ function listenForChanges(groupId) {
     });
     unsubscribers.push(unsub);
   }
+
+  // Also listen to the group document itself (stores joinRequests, name, etc.)
+  const groupUnsub = onSnapshot(fsDoc(fsDb, 'groups', groupId), async (docSnap) => {
+    if (docSnap.exists()) {
+      const remoteGroup = normalizeTimestamps({ id: docSnap.id, ...docSnap.data() });
+      const localGroup = await get(STORES.GROUPS, groupId).catch(() => null);
+      const { winner, doc } = resolveConflict(localGroup, remoteGroup);
+      if (winner === 'remote' && doc) {
+        await put(STORES.GROUPS, doc);
+      }
+    }
+    if (typeof onRemoteChange === 'function') onRemoteChange();
+  }, (err) => {
+    console.warn('[Sync] Group document listener error:', err.message);
+  });
+  unsubscribers.push(groupUnsub);
 }
 
 export async function flushQueue() {

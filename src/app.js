@@ -1,8 +1,8 @@
 import { addRoute, initRouter, navigate, reloadCurrentRoute } from './services/router.js';
 import { onAuthChange, currentUser } from './services/authService.js';
-import { openDB } from './services/indexedDBService.js';
+import { openDB, getAllByIndex, STORES } from './services/indexedDBService.js';
 import { initTheme } from './services/themeService.js';
-import { startSync, stopSync, setRemoteChangeCallback } from './services/syncService.js';
+import { startSync, stopSync, setRemoteChangeCallback, fetchGroupDataOnce } from './services/syncService.js';
 import { initConnectionStatus } from './services/connectionStatus.js';
 import { renderLogin } from './features/auth/LoginPage.js';
 import { renderRegister } from './features/auth/RegisterPage.js';
@@ -48,6 +48,12 @@ export async function boot() {
   addRoute('/group/:groupId', requireAuth(async ({ groupId }) => {
     resetBoardState();
     await startSync(groupId);
+    // On a new browser/device the local DB may be empty — do a one-shot Firestore
+    // pull before rendering so the board shows existing tasks and members
+    const existingTasks = await getAllByIndex(STORES.TASKS, 'groupId', groupId);
+    if (existingTasks.length === 0) {
+      await fetchGroupDataOnce(groupId);
+    }
     await renderTaskBoard(groupId);
   }));
   addRoute('/group/:groupId/evaluate', requireAuth(async ({ groupId }) => {
