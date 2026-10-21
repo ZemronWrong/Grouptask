@@ -276,9 +276,12 @@ service cloud.firestore {
     }
 
     // ── User Profiles ────────────────────────────────────────────────
-    // A user can only read and write their own profile document.
+    // Any authenticated user can READ any profile (needed for avatar/photo display
+    // across the board — leaderboard, member list, task cards, chat, etc.).
+    // Only the profile owner can WRITE their own document.
     match /userProfiles/{uid} {
-      allow read, write: if isAuthed() && request.auth.uid == uid;
+      allow read: if isAuthed();
+      allow write: if isAuthed() && request.auth.uid == uid;
     }
 
   }

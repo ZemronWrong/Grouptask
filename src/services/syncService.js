@@ -8,6 +8,7 @@
 import {
   collection as fsCollection,
   doc as fsDoc,
+  getDoc,
   setDoc,
   deleteDoc,
   getDocs,
@@ -70,6 +71,27 @@ export async function fetchGroupDataOnce(groupId) {
         if (winner === 'remote' && doc) await put(storeName, doc);
       }
     }));
+
+    // Also pull each member's userProfile so avatars/photos are visible to all group members.
+    // userProfiles are keyed by uid (not groupId), so we fetch them individually by ID.
+    try {
+      const membersSnap = await getDocs(
+        query(fsCollection(fsDb, 'members'), where('groupId', '==', groupId))
+      );
+      const uids = [...new Set(membersSnap.docs.map((d) => d.data().uid).filter(Boolean))];
+      await Promise.all(uids.map(async (uid) => {
+        const profileSnap = await getDoc(fsDoc(fsDb, 'userProfiles', uid));
+        if (profileSnap.exists()) {
+          const profile = { id: profileSnap.id, ...profileSnap.data() };
+          const local = await get(STORES.USER_PROFILES, profile.id).catch(() => null);
+          const { winner, doc } = resolveConflict(local, profile);
+          if (winner === 'remote' && doc) await put(STORES.USER_PROFILES, doc);
+        }
+      }));
+    } catch (profileErr) {
+      console.warn('[Sync] Could not fetch member userProfiles:', profileErr.message);
+    }
+
     console.info(`[Sync] fetchGroupDataOnce complete for group ${groupId}`);
   } catch (err) {
     console.warn('[Sync] fetchGroupDataOnce failed:', err.message);
@@ -173,6 +195,30 @@ function listenForChanges(groupId) {
     console.warn('[Sync] Group document listener error:', err.message);
   });
   unsubscribers.push(groupUnsub);
+
+  // Listen to userProfiles for each group member so avatar/photo changes propagate in real time.
+  // We do a one-time read of the members collection to get their UIDs, then subscribe to each.
+  getDocs(query(fsCollection(fsDb, 'members'), where('groupId', '==', groupId)))
+    .then((membersSnap) => {
+      const uids = [...new Set(membersSnap.docs.map((d) => d.data().uid).filter(Boolean))];
+      for (const uid of uids) {
+        const profileUnsub = onSnapshot(fsDoc(fsDb, 'userProfiles', uid), async (docSnap) => {
+          if (docSnap.exists()) {
+            const remoteProfile = { id: docSnap.id, ...docSnap.data() };
+            const localProfile = await get(STORES.USER_PROFILES, uid).catch(() => null);
+            const { winner, doc } = resolveConflict(localProfile, remoteProfile);
+            if (winner === 'remote' && doc) {
+              await put(STORES.USER_PROFILES, doc);
+              if (typeof onRemoteChange === 'function') onRemoteChange();
+            }
+          }
+        }, (err) => {
+          console.warn(`[Sync] userProfile listener error for ${uid}:`, err.message);
+        });
+        unsubscribers.push(profileUnsub);
+      }
+    })
+    .catch((err) => console.warn('[Sync] Could not set up userProfile listeners:', err.message));
 }
 
 export async function flushQueue() {
