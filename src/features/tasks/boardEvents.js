@@ -15,9 +15,8 @@ import { notify } from '../../services/notificationService.js';
 import { logActivity } from '../../services/activityLogService.js';
 import { openTaskModal, openTaskDetailModal } from './TaskModal.js';
 import { renderAchievementPopup } from './TaskCard.js';
-import { recordEvent, EVENT_TYPES, calculateTotalReputation } from '../../core/eventEngine.js';
-import { evaluateBoardBadges, evaluateCardBadges, evaluateHiddenBadges, evaluateStreakBadges, awardEligibleBadgesForUser } from '../../core/badgeEngine.js';
-import { calculateStreak } from '../../core/gamificationEngine.js';
+import { recordEvent, EVENT_TYPES } from '../../core/eventEngine.js';
+import { awardEligibleBadgesForUser } from '../../core/badgeEngine.js';
 import { openMemberPopup } from './TaskComments.js';
 
 function showToast(msg) {
@@ -572,40 +571,16 @@ async function handleReview(status, groupId, members, me, rerenderBoard) {
         metadata: { taskId, taskTitle: task.title, weight }
       });
 
-      // 2. Evaluate Badges (using new badgeEngine)
-      const allTasks  = await getAllByIndex(STORES.TASKS, 'groupId', groupId);
-      const allProofs = await getAll(STORES.PROOF_SUBMISSIONS);
-      const myBadges  = await getAllByIndex(STORES.BADGES, 'memberId', assignee.id); // Global badges check
-      const earnedIds = myBadges.map((b) => b.type);
-      
-      const rep = await calculateTotalReputation(assignee.uid);
-      const streakInfo = calculateStreak(allTasks, assignee.id);
+      // 2. Evaluate and award all eligible badges for the assignee using the
+      //    comprehensive engine (correctly syncs to Firestore and covers all badge types).
+      //    Bug fix: the previous code used simplified hardcoded values (contributionScore: 100,
+      //    avgPeerScore: 3) and was duplicated from the self-complete path. Using
+      //    awardEligibleBadgesForUser ensures real data is used and badges reach Firestore.
+      newBadges = await awardEligibleBadgesForUser(assignee.uid);
 
-      // Evaluate board badges
-      const boardBadges = evaluateBoardBadges({
-        memberId: assignee.id,
-        reputation: rep,
-        tasks: allTasks,
-        proofs: allProofs,
-        contributionScore: 100, // simplified for now
-        avgPeerScore: 3, // simplified for now
-        completedCount: allTasks.filter(t => t.assignedTo === assignee.id && t.status === 'done').length,
-        reviewCount: 0,
-        existingBadgeIds: earnedIds
-      });
-
-      // Evaluate global profile badges
-      const globalCompletedCount = allTasks.filter(t => t.assignedTo === assignee.id && t.status === 'done').length; // simplified proxy
-      const streakBadges = evaluateStreakBadges(streakInfo.currentStreak, earnedIds);
-      const cardBadges = evaluateCardBadges(globalCompletedCount, earnedIds);
-      const hiddenBadges = evaluateHiddenBadges(allTasks.filter(t => t.assignedTo === assignee.id && t.status === 'done'), earnedIds);
-
-      newBadges = [...boardBadges, ...streakBadges, ...cardBadges, ...hiddenBadges];
-
+      // Send a badge_earned notification to the assignee for each new badge.
+      // awardEligibleBadgesForUser handles the IndexedDB/Firestore write but not notifications.
       for (const b of newBadges) {
-        const badgeDoc = { id: generateId(), memberId: assignee.id, groupId, type: b.id, earnedAt: Date.now() };
-        await put(STORES.BADGES, badgeDoc);
-        await addToSyncQueue({ collection: 'badges', docId: badgeDoc.id, operation: 'add', data: badgeDoc });
         await notify({ uid: assignee.uid, type: 'badge_earned', title: 'Badge Earned! 🏆',
           message: `You earned the "${b.label}" badge!`, icon: b.icon || '🏆', actionLink: '#/profile', groupId });
       }
@@ -625,7 +600,11 @@ async function handleReview(status, groupId, members, me, rerenderBoard) {
   showToast(status === 'approved' ? 'Task Approved!' : 'Task Rejected');
   await rerenderBoard(groupId);
 
-  if (newBadges.length > 0 && assignee?.id === me?.id) {
+  // Show achievement popup if the currently logged-in user is the one who was just approved
+  // (i.e., the assignee approved their own task, or same-user scenario).
+  // Bug fix: was checking assignee?.id === me?.id which always fails when a leader approves
+  // someone else's task. Now we check by uid so it works regardless of role.
+  if (newBadges.length > 0 && assignee?.uid === me?.uid) {
     setTimeout(() => renderAchievementPopup(newBadges[0]), 500);
   }
 }

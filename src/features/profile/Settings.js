@@ -2,7 +2,7 @@
  * Settings Page — Profile, Theme, Notifications, Privacy sections.
  */
 
-import { STORES, get, put, getAll, getAllByIndex } from '../../services/indexedDBService.js';
+import { STORES, get, put, getAll, getAllByIndex, addToSyncQueue } from '../../services/indexedDBService.js';
 import { currentUser } from '../../services/authService.js';
 import { updateDisplayName } from '../../services/authService.js';
 import { escapeHtml } from '../../utils/helpers.js';
@@ -247,7 +247,11 @@ export async function renderSettings() {
     reader.onload = async () => {
       profile.avatar = reader.result;
       profile.avatarType = 'custom';
+      profile.updatedAt = Date.now();
       await put(STORES.USER_PROFILES, profile);
+      // Bug fix: profile photos were only saved locally — sync to Firestore
+      // so other group members' onSnapshot listeners fire and they see the new avatar.
+      await addToSyncQueue({ collection: 'userProfiles', docId: profile.uid, operation: 'update', data: profile });
       renderSettings();
     };
     reader.readAsDataURL(file);
@@ -257,7 +261,9 @@ export async function renderSettings() {
   document.getElementById('btn-remove-avatar').addEventListener('click', async () => {
     profile.avatar = '';
     profile.avatarType = 'default';
+    profile.updatedAt = Date.now();
     await put(STORES.USER_PROFILES, profile);
+    await addToSyncQueue({ collection: 'userProfiles', docId: profile.uid, operation: 'update', data: profile });
     renderSettings();
   });
 
@@ -267,7 +273,9 @@ export async function renderSettings() {
       profile.avatarEmoji = btn.dataset.emoji;
       profile.avatarType = 'default';
       profile.avatar = '';
+      profile.updatedAt = Date.now();
       await put(STORES.USER_PROFILES, profile);
+      await addToSyncQueue({ collection: 'userProfiles', docId: profile.uid, operation: 'update', data: profile });
       renderSettings();
     });
   });
@@ -283,7 +291,10 @@ export async function renderSettings() {
     profile.displayName = newName;
     profile.bio = document.getElementById('settings-bio').value.trim();
     profile.roleVisible = document.getElementById('toggle-role-visible').checked;
+    profile.updatedAt = Date.now();
     await put(STORES.USER_PROFILES, profile);
+    // Sync profile to Firestore so other members see updated display name and bio.
+    await addToSyncQueue({ collection: 'userProfiles', docId: profile.uid, operation: 'update', data: profile });
 
     // Update auth user's displayName so currentUser().displayName is correct everywhere
     await updateDisplayName(newName);
@@ -294,6 +305,7 @@ export async function renderSettings() {
       if (m.uid === user.uid && m.displayName !== newName) {
         m.displayName = newName;
         await put(STORES.MEMBERS, m);
+        await addToSyncQueue({ collection: 'members', docId: m.id, operation: 'update', data: m });
       }
     }
 
