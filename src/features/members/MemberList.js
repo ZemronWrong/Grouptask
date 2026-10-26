@@ -1,14 +1,14 @@
 import { STORES, get, getAllByIndex, put, remove, addToSyncQueue } from '../../services/indexedDBService.js';
 import { kickMember, leaveGroup } from '../../services/memberService.js';
 import { flushQueue } from '../../services/syncService.js';
-import { generateId, formatRelative, escapeHtml } from '../../utils/helpers.js';
+import { escapeHtml } from '../../utils/helpers.js';
 import { currentUser } from '../../services/authService.js';
 import { getTerm, getRoleName } from '../../services/themeService.js';
-import { notify } from '../../services/notificationService.js';
+// notify removed — 'Send Warning' button removed (UREB A3)
 import { navigate } from '../../services/router.js';
 import { ICONS } from '../../assets/icons/icons.js';
-import { calculateContributionScore } from '../../core/scoringEngine.js';
-import { calculatePEScore } from '../../core/peerEvaluationEngine.js';
+// calculateContributionScore removed from this page — WPS/PE no longer shown on member cards (UREB A2/A3)
+// calculatePEScore removed — WPS/PE no longer shown on other members' cards (UREB A2/A3)
 
 export async function renderMembers(groupId) {
   const app = document.getElementById('app');
@@ -16,50 +16,29 @@ export async function renderMembers(groupId) {
   const group = await get(STORES.GROUPS, groupId);
   const tasks = await getAllByIndex(STORES.TASKS, 'groupId', groupId);
   const membersList = await getAllByIndex(STORES.MEMBERS, 'groupId', groupId);
-  const peerReviews = await getAllByIndex(STORES.PEER_REVIEWS, 'groupId', groupId);
+  // peerReviews fetch removed — WPS/PE no longer computed per-member on this page (UREB A2/A3)
 
   const me = membersList.find(m => m.uid === user.uid);
   const isAdmin = me?.role === 'owner' || me?.role === 'co-admin';
   const isOwner = me?.role === 'owner';
   const isCoOwner = me?.role === 'co-admin';
 
-  const n = membersList.length; // Group member count for RCI formula
 
   // Analysis variables
-  let highestRisk = 0;
+  // UREB A3: Risk score is computed internally for admin tools (restrict/kick) only.
+  // Risk labels ('High Free-Rider Risk', 'Needs Attention') are removed — they must not
+  // be visible to participants during the study (UREB consent form requirement).
   const analysisData = membersList.map((m) => {
     const assigned = tasks.filter((t) => t.assignedTo === m.id);
     const completed = assigned.filter((t) => t.status === 'done');
     const overdue = assigned.filter((t) => t.deadline && new Date(t.deadline) < new Date() && t.status !== 'done');
-    
-    // Simple heuristic risk score (unchanged — used for risk label colour)
-    let riskScore = 0;
-    if (assigned.length > 0) {
-      if (completed.length === 0) riskScore += 50;
-      if (completed.length > 0 && (completed.length / assigned.length) < 0.3) riskScore += 30;
-      riskScore += (overdue.length * 15);
-    } else {
-      riskScore = 10; // no tasks assigned
-    }
-    if (m.restricted) riskScore += 100; // Flagged manually
-    if (riskScore > highestRisk) highestRisk = riskScore;
-
-    // Real PE score using Chapter 3 manuscript formulation
-    const cs = calculateContributionScore(tasks, m.id);
-    const memberRatings = peerReviews
-      .filter(pr => pr.evaluateeId === m.id)
-      .map(pr => ({ rating: pr.score }));
-    const pe = calculatePEScore(cs.completedWeight, cs.groupDoneWeight, n, memberRatings);
 
     return {
       member: m,
       assigned: assigned.length,
       completed: completed.length,
       overdue: overdue.length,
-      riskScore,
       restricted: !!m.restricted,
-      wps: cs.score,           // WPS percentage for display
-      pe,                       // Full PE result object
     };
   });
 
@@ -77,14 +56,14 @@ export async function renderMembers(groupId) {
           <div style="margin-bottom:24px; padding:16px; background:var(--bg-card); border-radius:12px; border:1px solid var(--border);">
             <h2 style="font-size:1.1rem; margin-bottom:8px;">Team Analysis</h2>
             <p style="color:var(--text-secondary); font-size:0.9rem;">
-              The system monitors assignment completion rates. Members with consistently zero completions or high overdue tasks are flagged as potential risks.
+              Track assignment progress and completion across your team.
             </p>
           </div>
 
           <div class="members-grid">
             ${analysisData
-              .sort((a, b) => b.riskScore - a.riskScore)
-              .map((data) => memberCardHTML(data, highestRisk, isAdmin, isOwner, me, groupId, n))
+              .sort((a, b) => (a.member.displayName || '').localeCompare(b.member.displayName || ''))
+              .map((data) => memberCardHTML(data, isAdmin, isOwner, me, groupId))
               .join('')}
           </div>
         </div>
@@ -96,22 +75,11 @@ export async function renderMembers(groupId) {
   bindMemberEvents(groupId, membersList);
 }
 
-function memberCardHTML(data, maxRisk, isAdmin, isOwner, me, groupId, n) {
-  const { member, assigned, completed, overdue, riskScore, restricted, wps, pe } = data;
-  const isHighRisk = riskScore >= 50;
-  
-  let riskLabel = 'Active & Engaged';
-  let riskColor = 'var(--success)';
-  if (restricted) {
-    riskLabel = 'RESTRICTED';
-    riskColor = 'var(--danger)';
-  } else if (isHighRisk) {
-    riskLabel = 'High Free-Rider Risk';
-    riskColor = 'var(--danger)';
-  } else if (riskScore > 20) {
-    riskLabel = 'Needs Attention';
-    riskColor = 'var(--warning)';
-  }
+// UREB A3: Risk labels ('High Free-Rider Risk', 'Needs Attention', 'Active & Engaged') removed.
+// UREB A2: WPS share and PE score removed from other members' cards.
+// Members are sorted alphabetically, not by risk score.
+function memberCardHTML(data, isAdmin, isOwner, me, groupId) {
+  const { member, assigned, completed, overdue, restricted } = data;
 
   const isMe = member.id === me?.id;
   // Owner can manage co-owners and below; co-owner can manage members and viewers
@@ -120,7 +88,7 @@ function memberCardHTML(data, maxRisk, isAdmin, isOwner, me, groupId, n) {
     : (isAdmin && !isMe && (member.role === 'member' || member.role === 'viewer'));
 
   return `
-    <div class="member-card ${isHighRisk ? 'high-risk' : ''}">
+    <div class="member-card${restricted ? ' member-restricted' : ''}">
       <div class="member-card-header">
         <div class="avatar avatar-lg">${escapeHtml(member.displayName?.[0] || '?')}</div>
         <div>
@@ -147,35 +115,12 @@ function memberCardHTML(data, maxRisk, isAdmin, isOwner, me, groupId, n) {
         </div>
       </div>
 
-      <div class="risk-bar-container">
-        <div style="display:flex; justify-content:space-between; margin-bottom:4px; font-size:0.75rem;">
-          <span style="color:${riskColor}; font-family:var(--font-heading); font-weight:bold;">${riskLabel}</span>
-        </div>
-      </div>
-
-      <!-- PE Score panel (Chapter 3 manuscript formulation) -->
-      <div style="margin-top:12px; padding:10px 12px; background:var(--bg); border-radius:8px; border:1px solid var(--border); font-size:0.8rem;">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-          <span style="font-family:var(--font-heading); color:var(--text-secondary); text-transform:uppercase; font-size:0.7rem; letter-spacing:0.05em;">WPS Share</span>
-          <span style="font-family:var(--font-heading); font-weight:700; color:var(--accent);">${wps.toFixed(1)}%</span>
-        </div>
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
-          <span style="font-family:var(--font-heading); color:var(--text-secondary); text-transform:uppercase; font-size:0.7rem; letter-spacing:0.05em;">PE Score</span>
-          <span style="font-family:var(--font-heading); font-weight:700; color:var(--primary); font-size:1rem;">${pe.peScore.toFixed(1)}<span style="font-size:0.65rem; font-weight:400;">/100</span></span>
-        </div>
-        <div style="display:flex; justify-content:space-between; align-items:center;">
-          <span style="font-family:var(--font-heading); color:var(--text-muted); font-size:0.68rem;">
-            ${pe.ratingsStatus === 'has_ratings'
-              ? `C<sub>i</sub>: ${pe.ciComponent.toFixed(1)} | Peer: ${pe.peerComponent.toFixed(1)} (${pe.ratingCount} rating${pe.ratingCount !== 1 ? 's' : ''})`
-              : `Task-Based Only — ${pe.ratingCount} of ${pe.requiredRatings || 2} peer ratings received`
-            }
-          </span>
-        </div>
-      </div>
+      ${restricted ? `
+        <div style="margin-top:8px; font-size:0.75rem; color:var(--danger); font-family:var(--font-heading); font-weight:700;">RESTRICTED</div>
+      ` : ''}
 
       ${canManage && !isMe ? `
         <div style="margin-top:16px; border-top:1px solid var(--border); padding-top:12px; display:flex; gap:8px; flex-wrap:wrap;">
-          ${isHighRisk ? `<button class="btn btn-secondary btn-sm btn-warn-member" data-member-id="${member.id}" style="border-color:var(--warning); color:var(--warning);">Send Warning</button>` : ''}
           <button class="btn btn-secondary btn-sm btn-restrict-member" data-member-id="${member.id}">${restricted ? 'Unrestrict' : 'Restrict Tasks'}</button>
           <button class="btn btn-secondary btn-sm btn-kick-member" data-member-id="${member.id}" style="border-color:var(--danger); color:var(--danger);">Kick</button>
         </div>

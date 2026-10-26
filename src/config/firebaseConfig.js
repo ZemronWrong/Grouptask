@@ -1,7 +1,7 @@
 import { initializeApp } from 'firebase/app';
-import { getAnalytics } from 'firebase/analytics';
 import { getFirestore } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
+// Analytics removed (UREB A5): no usage data may be sent to third-party services during the study.
 
 // Vite exposes VITE_* variables via import.meta.env.
 // Locally these come from .env.local; on Vercel set them in the dashboard.
@@ -12,31 +12,22 @@ const firebaseConfig = {
   storageBucket:     import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
   messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
   appId:             import.meta.env.VITE_FIREBASE_APP_ID,
-  measurementId:     import.meta.env.VITE_FIREBASE_MEASUREMENT_ID,
+  // measurementId removed — analytics disabled (UREB A5)
 };
 
 // Falls back to mock mode if no env vars are present (e.g. running tests locally
 // without a .env.local file, or a fork without credentials).
 const isMock = !firebaseConfig.apiKey || firebaseConfig.apiKey === 'YOUR_API_KEY';
 
-let app     = null;
-let fsDb    = null;
-let auth    = null;
-let analytics = null;
+let app  = null;
+let fsDb = null;
+let auth = null;
 
 if (!isMock) {
   try {
     app  = initializeApp(firebaseConfig);
     fsDb = getFirestore(app);
     auth = getAuth(app);
-
-    if (typeof window !== 'undefined') {
-      try {
-        analytics = getAnalytics(app);
-      } catch (err) {
-        console.warn('[Firebase] Analytics unavailable:', err.message);
-      }
-    }
 
     // NOTE: enableIndexedDbPersistence is intentionally NOT called here.
     // This app uses its own IndexedDB sync queue (syncService.js) as the
@@ -48,4 +39,4 @@ if (!isMock) {
   }
 }
 
-export { app, fsDb, auth, analytics, isMock };
+export { app, fsDb, auth, isMock };
