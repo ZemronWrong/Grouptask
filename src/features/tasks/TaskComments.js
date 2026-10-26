@@ -9,7 +9,7 @@ import { escapeHtml, generateId } from '../../utils/helpers.js';
 import { notify } from '../../services/notificationService.js';
 import { ICONS } from '../../assets/icons/icons.js';
 import { logActivity } from '../../services/activityLogService.js';
-import { getAllBadges } from '../../core/badgeEngine.js';
+import { getAllBadges, awardEligibleBadgesForUser } from '../../core/badgeEngine.js';
 
 const ALL_BADGE_DEFS = getAllBadges();
 
@@ -18,29 +18,40 @@ async function getMemberTopBadge(memberUid, memberIdList) {
   const allBadges = await getAll(STORES.BADGES);
   const memberBadgeTypes = new Set(
     allBadges
-      .filter(b => memberIdList.includes(b.memberId) || b.uid === memberUid)
-      .map(b => b.type)
+      .filter(b => memberIdList.includes(b.memberId) || (memberUid && b.uid === memberUid))
+      .map(b => b.type || b.id)
   );
   // Return first badge definition that is earned (ordered by ALL_BADGE_DEFS priority)
   return ALL_BADGE_DEFS.find(b => memberBadgeTypes.has(b.id)) || null;
 }
 
-/** Build a member mini-profile popup HTML. Called on member avatar/name click. */
+/** Build a member mini-profile popup HTML. Called on member avatar/name/badge click. */
 async function buildMemberPopup(member, groupId) {
+  if (member.uid) {
+    try {
+      await awardEligibleBadgesForUser(member.uid);
+    } catch {
+      // ignore
+    }
+  }
+
   const allTasks  = await getAllByIndex(STORES.TASKS, 'groupId', groupId);
   const allBadges = await getAll(STORES.BADGES);
   const allComments = await getAll(STORES.COMMENTS);
-  const allMembers  = await getAllByIndex(STORES.MEMBERS, 'groupId', groupId);
-  const profile = await get(STORES.USER_PROFILES, member.uid) || {};
+  const allMembers  = await getAll(STORES.MEMBERS);
+  const profile = (member.uid ? await get(STORES.USER_PROFILES, member.uid) : null) || {};
 
-  const allMemberIds = allMembers.filter(m => m.uid === member.uid).map(m => m.id);
+  const allUserMembers = allMembers.filter(m => (member.uid && m.uid === member.uid) || m.id === member.id);
+  const allMemberIds = allUserMembers.map(m => m.id);
+  if (!allMemberIds.includes(member.id)) allMemberIds.push(member.id);
+
   const completedTasks = allTasks.filter(t => t.assignedTo === member.id && t.status === 'done').length;
   const commentCount   = allComments.filter(c => allMemberIds.includes(c.memberId) && !c.deleted).length;
 
   const memberBadgeTypes = new Set(
     allBadges
-      .filter(b => allMemberIds.includes(b.memberId) || b.uid === member.uid)
-      .map(b => b.type)
+      .filter(b => allMemberIds.includes(b.memberId) || (member.uid && b.uid === member.uid))
+      .map(b => b.type || b.id)
   );
   const earnedBadges = ALL_BADGE_DEFS.filter(b => memberBadgeTypes.has(b.id));
 
@@ -62,56 +73,69 @@ async function buildMemberPopup(member, groupId) {
     ? `<img src="${profile.avatar}" alt="${escapeHtml(member.displayName?.[0] || '?')}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`
     : escapeHtml(member.displayName?.[0] || '?');
   const mockUsers = JSON.parse(localStorage.getItem('grouptask_mock_users') || '[]');
-  const email = profile.email || member.email || mockUser?.email || (member.uid === currentUser()?.uid ? currentUser()?.email : null) || '';
+  const mockU = mockUsers.find(u => u.uid === member.uid);
+  const email = profile.email || member.email || mockU?.email || (member.uid === currentUser()?.uid ? currentUser()?.email : '') || '';
 
   return `
     <div class="member-popup-overlay" id="member-popup-overlay">
-      <div class="member-popup">
-        <button class="btn-icon member-popup-close" id="member-popup-close" style="position:absolute;top:12px;right:12px;">✕</button>
-        <div style="display:flex; gap:16px; align-items:flex-start; margin-bottom:16px;">
-          <div class="avatar" style="width:56px;height:56px;font-size:1.4rem;flex-shrink:0;overflow:hidden;">${avatarHTML}</div>
-          <div>
-            <h3 style="margin:0 0 4px 0; font-size:1.1rem;">${escapeHtml(member.displayName)}</h3>
-            ${email ? `
-              <div style="font-size:0.78rem; color:var(--text-secondary); margin-bottom:4px; display:flex; align-items:center; gap:4px;">
-                <span>✉️</span> <span>${escapeHtml(email)}</span>
-              </div>
-            ` : ''}
-            <div style="font-size:0.78rem; color:var(--primary); font-family:var(--font-heading); font-weight:600;">
+      <div class="member-popup" style="width:360px; max-width:92vw;">
+        <button class="btn-icon member-popup-close" id="member-popup-close" style="position:absolute;top:12px;right:12px;" title="Close">✕</button>
+        <div style="display:flex; gap:14px; align-items:center; margin-bottom:16px;">
+          <div class="avatar" style="width:52px;height:52px;font-size:1.3rem;flex-shrink:0;overflow:hidden;border:2px solid var(--border);">${avatarHTML}</div>
+          <div style="min-width:0; flex:1;">
+            <h3 style="margin:0 0 4px 0; font-size:1.05rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(member.displayName)}</h3>
+            <div style="font-size:0.75rem; color:var(--primary); font-family:var(--font-heading); font-weight:600;">
               ${member.role === 'owner' ? 'Owner' : member.role === 'co-admin' ? 'Co-owner' : member.role === 'viewer' ? 'Only View' : 'Member'}
             </div>
+            ${email ? `
+              <div style="font-size:0.75rem; color:var(--text-secondary); margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+                ✉️ ${escapeHtml(email)}
+              </div>
+            ` : ''}
           </div>
         </div>
 
         <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:16px; text-align:center;">
-          <div style="background:var(--bg); border-radius:8px; padding:10px 6px; border:1px solid var(--border);">
-            <div style="font-size:1.1rem; font-weight:700; color:var(--primary);">${completedTasks}</div>
-            <div style="font-size:0.7rem; color:var(--text-muted);">Tasks Done</div>
+          <div style="background:var(--bg); border-radius:8px; padding:8px 4px; border:1px solid var(--border);">
+            <div style="font-size:1.05rem; font-weight:700; color:var(--primary);">${completedTasks}</div>
+            <div style="font-size:0.68rem; color:var(--text-muted);">Tasks Done</div>
           </div>
-          <div style="background:var(--bg); border-radius:8px; padding:10px 6px; border:1px solid var(--border);">
-            <div style="font-size:1.1rem; font-weight:700; color:var(--accent);">${streak}d</div>
-            <div style="font-size:0.7rem; color:var(--text-muted);">Streak</div>
+          <div style="background:var(--bg); border-radius:8px; padding:8px 4px; border:1px solid var(--border);">
+            <div style="font-size:1.05rem; font-weight:700; color:var(--accent);">${streak}d</div>
+            <div style="font-size:0.68rem; color:var(--text-muted);">Streak</div>
           </div>
-          <div style="background:var(--bg); border-radius:8px; padding:10px 6px; border:1px solid var(--border);">
-            <div style="font-size:1.1rem; font-weight:700; color:var(--success);">${commentCount}</div>
-            <div style="font-size:0.7rem; color:var(--text-muted);">Comments</div>
+          <div style="background:var(--bg); border-radius:8px; padding:8px 4px; border:1px solid var(--border);">
+            <div style="font-size:1.05rem; font-weight:700; color:var(--success);">${earnedBadges.length}</div>
+            <div style="font-size:0.68rem; color:var(--text-muted);">Badges</div>
           </div>
         </div>
 
-        ${earnedBadges.length > 0 ? `
-          <div style="margin-bottom:8px;">
-            <div style="font-size:0.72rem; color:var(--text-muted); font-family:var(--font-heading); text-transform:uppercase; letter-spacing:0.05em; margin-bottom:6px;">Badges Earned</div>
-            <div style="display:flex; flex-wrap:wrap; gap:6px;">
+        <div style="margin-bottom:14px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+            <span style="font-size:0.75rem; color:var(--text); font-family:var(--font-heading); font-weight:700; text-transform:uppercase; letter-spacing:0.05em;">🏅 Badges Earned (${earnedBadges.length})</span>
+          </div>
+          ${earnedBadges.length > 0 ? `
+            <div style="display:flex; flex-direction:column; gap:6px; max-height:180px; overflow-y:auto; padding-right:4px;">
               ${earnedBadges.map(b => `
-                <span title="${escapeHtml(b.label)}" style="display:inline-flex;align-items:center;gap:4px; background:var(--bg-card); border:1px solid var(--border); border-radius:20px; padding:3px 8px; font-size:0.72rem; color:var(--text-secondary);">
-                  <span style="font-size:0.85rem;">${b.icon}</span> ${escapeHtml(b.label)}
-                </span>
+                <div style="display:flex; align-items:center; gap:8px; background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:6px 10px;">
+                  <span style="font-size:1.2rem; flex-shrink:0;">${b.icon}</span>
+                  <div style="min-width:0; flex:1;">
+                    <div style="font-size:0.8rem; font-family:var(--font-heading); font-weight:600; color:var(--text);">${escapeHtml(b.label)}</div>
+                    <div style="font-size:0.7rem; color:var(--text-secondary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${escapeHtml(b.description)}">${escapeHtml(b.description)}</div>
+                  </div>
+                  <span style="font-size:0.65rem; color:var(--accent); background:var(--primary-soft); padding:2px 6px; border-radius:10px; font-weight:600; flex-shrink:0;">${escapeHtml(b.category)}</span>
+                </div>
               `).join('')}
             </div>
-          </div>
-        ` : `<p style="font-size:0.8rem; color:var(--text-muted); margin-bottom:8px;">No badges yet.</p>`}
+          ` : `
+            <div style="background:var(--bg); border-radius:8px; padding:12px; border:1px dashed var(--border); text-align:center;">
+              <span style="font-size:1.2rem; display:block; margin-bottom:4px;">🔒</span>
+              <p style="font-size:0.78rem; color:var(--text-muted); margin:0;">No badges unlocked yet.</p>
+            </div>
+          `}
+        </div>
 
-        <div style="margin-top:16px; border-top:1px solid var(--border); padding-top:12px;">
+        <div style="border-top:1px solid var(--border); padding-top:12px;">
           <a href="#/profile/${member.uid || member.id}" class="btn btn-primary btn-sm btn-block" id="btn-view-member-full-profile" style="text-decoration:none; display:flex; align-items:center; justify-content:center; gap:6px; font-family:var(--font-heading);">
             <span>🏅</span> View Full Profile & Achievements
           </a>
@@ -139,16 +163,17 @@ export async function renderCommentsUI(taskId, groupId, members) {
     const isMine = c.memberId === me?.id;
 
     // Get top badge for this author
-    const authorMemberIds = members.filter(m => m.uid === author.uid).map(m => m.id);
+    const authorMemberIds = members.filter(m => (author.uid && m.uid === author.uid) || m.id === author.id).map(m => m.id);
+    if (!authorMemberIds.includes(author.id)) authorMemberIds.push(author.id);
     const authorBadgeTypes = new Set(
       allBadges
-        .filter(b => authorMemberIds.includes(b.memberId) || b.uid === author.uid)
-        .map(b => b.type)
+        .filter(b => authorMemberIds.includes(b.memberId) || (author.uid && b.uid === author.uid))
+        .map(b => b.type || b.id)
     );
     const topBadge = ALL_BADGE_DEFS.find(b => authorBadgeTypes.has(b.id));
 
     // Profile picture
-    const prof = profileMap[author.uid];
+    const prof = author.uid ? profileMap[author.uid] : null;
     const hasPhoto = prof?.avatarType === 'custom' && prof?.avatar;
     const avatarHTML = hasPhoto
       ? `<img src="${prof.avatar}" alt="${escapeHtml(author.displayName?.[0] || '?')}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`
@@ -156,11 +181,19 @@ export async function renderCommentsUI(taskId, groupId, members) {
 
     return `
       <div class="comment-item" data-comment-id="${c.id}">
-        <div class="avatar avatar-sm comment-author-avatar" data-member-id="${c.memberId}" data-group-id="${groupId}" style="cursor:pointer; overflow:hidden; flex-shrink:0;">${avatarHTML}</div>
+        <div class="avatar avatar-sm comment-author-avatar" data-member-id="${c.memberId}" data-group-id="${groupId}" style="cursor:pointer; overflow:hidden; flex-shrink:0;" title="Click to view ${escapeHtml(author.displayName)}'s badges">${avatarHTML}</div>
         <div class="comment-content">
-          <div class="comment-header">
-            <span class="comment-author comment-author-link" data-member-id="${c.memberId}" data-group-id="${groupId}" style="cursor:pointer;">${escapeHtml(author.displayName)}</span>
-            ${topBadge ? `<span class="comment-badge-inline" title="${escapeHtml(topBadge.label)}" style="display:inline-flex;align-items:center;gap:2px; background:var(--primary-soft); border:1px solid var(--border); border-radius:12px; padding:1px 6px; font-size:0.65rem; color:var(--primary); margin-left:4px; vertical-align:middle;">${topBadge.icon} <span style="font-family:var(--font-heading);">${escapeHtml(topBadge.label)}</span></span>` : ''}
+          <div class="comment-header" style="display:flex; align-items:center; flex-wrap:wrap; gap:6px;">
+            <span class="comment-author comment-author-link" data-member-id="${c.memberId}" data-group-id="${groupId}" style="cursor:pointer;" title="Click to view badges">${escapeHtml(author.displayName)}</span>
+            ${topBadge ? `
+              <span class="comment-badge-inline" data-member-id="${c.memberId}" data-group-id="${groupId}" title="${escapeHtml(topBadge.label)} — Click to view badges" style="display:inline-flex;align-items:center;gap:3px; background:var(--primary-soft); border:1px solid var(--border); border-radius:12px; padding:2px 8px; font-size:0.7rem; color:var(--primary); cursor:pointer;">
+                <span>${topBadge.icon}</span> <span style="font-family:var(--font-heading); font-weight:600;">${escapeHtml(topBadge.label)}</span>
+              </span>
+            ` : `
+              <span class="comment-badge-inline" data-member-id="${c.memberId}" data-group-id="${groupId}" title="View badges" style="display:inline-flex;align-items:center;gap:2px; background:var(--bg); border:1px solid var(--border); border-radius:12px; padding:2px 6px; font-size:0.7rem; color:var(--text-muted); cursor:pointer;">
+                <span>🏅</span>
+              </span>
+            `}
             <span class="comment-time">${new Date(c.createdAt).toLocaleString()}</span>
           </div>
           <div class="comment-text ${c.deleted ? 'comment-deleted' : ''}">
@@ -268,14 +301,18 @@ export function bindCommentEvents(taskId, groupId, members, onCommentAdded) {
     });
   });
 
-  // Member popup on avatar/name click
+  // Member popup on avatar/name/badge click
   const handleMemberClick = async (memberId, gId) => {
-    const member = members.find(m => m.id === memberId);
+    let member = members.find(m => m.id === memberId || m.uid === memberId);
+    if (!member) {
+      const allM = await getAll(STORES.MEMBERS);
+      member = allM.find(m => m.id === memberId || m.uid === memberId);
+    }
     if (!member) return;
     await openMemberPopup(member, gId);
   };
 
-  list.querySelectorAll('.comment-author-link, .comment-author-avatar').forEach(el => {
+  list.querySelectorAll('.comment-author-link, .comment-author-avatar, .comment-badge-inline').forEach(el => {
     el.addEventListener('click', async (e) => {
       e.stopPropagation();
       const memberId = el.dataset.memberId;

@@ -3611,8 +3611,14 @@ textarea { resize: vertical; }
    ═══════════════════════════════════════════ */
 .comment-badge-inline {
   vertical-align: middle;
-  transition: transform var(--transition);
+  transition: transform var(--transition), box-shadow var(--transition);
+  cursor: pointer;
+  user-select: none;
 }
 .comment-badge-inline:hover {
-  transform: scale(1.05);
+  transform: translateY(-1px) scale(1.04);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+}
+.comment-badge-inline:active {
+  transform: scale(0.98);
 }
