@@ -266,9 +266,9 @@ export function bindBoardEvents(boardContext, rerenderBoard) {
       return;
     }
 
-    // Click on card body — open detail modal
+    // Click on card body — open detail modal (unless clicking button or link)
     const card = e.target.closest('.task-card');
-    if (card && !e.target.closest('button')) {
+    if (card && !e.target.closest('button') && !e.target.closest('a')) {
       const task = await get(STORES.TASKS, card.dataset.taskId);
       if (task) await openTaskDetailModal(task, groupId, members, viewIsAdmin);
       return;

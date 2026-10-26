@@ -44,6 +44,7 @@ export async function boot() {
   addRoute('/register', guestOnly(renderRegister));
   addRoute('/dashboard', requireAuth(renderDashboard));
   addRoute('/settings', requireAuth(renderSettings));
+  addRoute('/profile/:uid', requireAuth(renderProfile));
   addRoute('/profile', requireAuth(renderProfile));
   addRoute('/group/:groupId', requireAuth(async ({ groupId }) => {
     resetBoardState();

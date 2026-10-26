@@ -13,33 +13,46 @@ import { getBadgeProgress, getAllBadges, awardEligibleBadgesForUser } from '../.
 import { getRoleName } from '../../services/themeService.js';
 import { ICONS } from '../../assets/icons/icons.js';
 
-export async function renderProfile() {
+export async function renderProfile(paramsOrUid) {
   const app = document.getElementById('app');
   const user = currentUser();
   if (!user) { navigate('#/login'); return; }
 
-  const profile = await get(STORES.USER_PROFILES, user.uid) || {
-    uid: user.uid,
-    displayName: user.displayName || user.email || 'Unknown',
-    bio: '',
-    avatarEmoji: '🧙',
-    avatarType: 'default',
-    avatar: '',
-  };
-
-  // Auto-award any eligible badges the user completed (e.g. bug squasher, streaks, tasks, comments)
-  await awardEligibleBadgesForUser(user.uid);
-
   const allMembers = await getAll(STORES.MEMBERS);
-  const myMembers = allMembers.filter(m => m.uid === user.uid);
+  const rawTarget = typeof paramsOrUid === 'object' ? paramsOrUid?.uid : paramsOrUid;
+
+  // Resolve whether rawTarget matches a memberId or uid
+  const matchedMember = allMembers.find(m => m.id === rawTarget || m.uid === rawTarget);
+  const targetUid = matchedMember?.uid || rawTarget || user.uid;
+  const isOwnProfile = !rawTarget || targetUid === user.uid;
+
+  let profile = await get(STORES.USER_PROFILES, targetUid);
+  if (!profile) {
+    const mockUsers = JSON.parse(localStorage.getItem('grouptask_mock_users') || '[]');
+    const mockU = mockUsers.find(u => u.uid === targetUid);
+    profile = {
+      uid: targetUid,
+      displayName: matchedMember?.displayName || mockU?.displayName || mockU?.email || (isOwnProfile ? user.displayName || user.email || 'You' : 'Team Member'),
+      bio: '',
+      avatarEmoji: '🧙',
+      avatarType: 'default',
+      avatar: '',
+    };
+  }
+
+  // Auto-award any eligible badges for this user
+  await awardEligibleBadgesForUser(targetUid);
+
+  const targetMembers = allMembers.filter(m => m.uid === targetUid || m.id === targetUid);
+  const targetMemberIds = targetMembers.map(m => m.id);
   const allTasks = await getAll(STORES.TASKS);
   const allBadges = await getAll(STORES.BADGES);
   const allReviews = await getAll(STORES.PEER_REVIEWS);
   const allComments = await getAll(STORES.COMMENTS);
 
-  // New Global Scoring
-  const totalXP = await calculateGlobalXP(user.uid);
-  const totalRep = await calculateTotalReputation(user.uid);
+  // New Global Scoring for targetUid
+  const totalXP = await calculateGlobalXP(targetUid);
+  const totalRep = await calculateTotalReputation(targetUid);
   
   const repProgress = getRepProgress(totalRep);
   const lvl = getXPLevel(totalXP);
@@ -50,12 +63,9 @@ export async function renderProfile() {
   let totalCompleted = 0;
   let totalStreak = 0;
   const earnedBadgeTypes = new Set();
-  
-  // Collect all member IDs for this user across all groups
-  const myMemberIds = myMembers.map(m => m.id);
 
   // Aggregate global task stats from all groups
-  for (const mm of myMembers) {
+  for (const mm of targetMembers) {
     const groupTasks = allTasks.filter(t => t.groupId === mm.groupId);
     totalCompleted += groupTasks.filter(t => t.assignedTo === mm.id && t.status === 'done').length;
     const streakInfo = calculateStreak(groupTasks, mm.id);
@@ -64,22 +74,22 @@ export async function renderProfile() {
 
   // Collect earned badges — check by memberId (from all member records) AND uid
   allBadges
-    .filter(b => myMemberIds.includes(b.memberId) || b.uid === user.uid)
+    .filter(b => targetMemberIds.includes(b.memberId) || b.uid === targetUid)
     .forEach(b => earnedBadgeTypes.add(b.type || b.id));
 
   // Count user's comments across tasks (by all member IDs)
-  const totalComments = allComments.filter(c => myMemberIds.includes(c.memberId) && !c.deleted).length;
+  const totalComments = allComments.filter(c => targetMemberIds.includes(c.memberId) && !c.deleted).length;
 
   // Peer rating average
   let totalRatingSum = 0;
   let totalRatingCount = 0;
-  for (const mm of myMembers) {
-    const reviews = allReviews.filter(r => r.evaluateeId === mm.id);
+  for (const mm of targetMembers) {
+    const reviews = allReviews.filter(r => r.evaluateeId === mm.id || r.evaluateeUid === targetUid);
     reviews.forEach(r => { totalRatingSum += r.score; totalRatingCount++; });
   }
   const avgRating = totalRatingCount > 0 ? (totalRatingSum / totalRatingCount).toFixed(1) : 'N/A';
-  const memberSince = myMembers.length > 0 ? new Date(Math.min(...myMembers.map(m => m.joinedAt || Date.now()))).toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) : 'N/A';
-  const primaryRole = myMembers.length > 0 ? myMembers[0].role || 'member' : 'member';
+  const memberSince = targetMembers.length > 0 ? new Date(Math.min(...targetMembers.map(m => m.joinedAt || Date.now()))).toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) : 'N/A';
+  const primaryRole = targetMembers.length > 0 ? targetMembers[0].role || 'member' : 'member';
 
   const badgeStats = getBadgeProgress({ streakDays: totalStreak, commentCount: totalComments, cardCount: totalCompleted });
   
@@ -89,7 +99,7 @@ export async function renderProfile() {
   const topBadge = earnedBadgesList[0] || null;
 
   const recentTasks = allTasks
-    .filter(t => myMembers.some(m => m.id === t.assignedTo) && t.status === 'done' && t.completedAt)
+    .filter(t => targetMembers.some(m => m.id === t.assignedTo) && t.status === 'done' && t.completedAt)
     .sort((a, b) => b.completedAt - a.completedAt)
     .slice(0, 5);
 
@@ -97,15 +107,17 @@ export async function renderProfile() {
     <header class="board-header">
       <div class="board-header-left">
         <button class="btn-icon" id="btn-profile-back" title="Back">${ICONS.back}</button>
-        <h1 class="board-title">My Profile</h1>
+        <h1 class="board-title">${isOwnProfile ? 'My Profile' : `${escapeHtml(profile.displayName)}'s Profile`}</h1>
       </div>
-      <div class="board-header-right">
-        <button class="btn btn-secondary btn-sm" id="btn-edit-profile">Edit Profile</button>
-      </div>
+      ${isOwnProfile ? `
+        <div class="board-header-right">
+          <button class="btn btn-secondary btn-sm" id="btn-edit-profile">Edit Profile</button>
+        </div>
+      ` : ''}
     </header>
 
     <div class="profile-page">
-      ${isFlagged ? `
+      ${isFlagged && isOwnProfile ? `
         <div style="background: rgba(220, 38, 38, 0.1); border-left: 4px solid var(--danger); padding: 16px; margin-bottom: 24px; border-radius: 8px;">
           <h3 style="color: var(--danger); margin: 0 0 8px 0;">Needs Improvement</h3>
           <p style="margin: 0; font-size: 0.9rem; color: var(--text-secondary);">Your reputation score is below zero. Board badges are currently suspended. Focus on consistent deliverables and peer collaboration to recover.</p>
@@ -198,7 +210,10 @@ export async function renderProfile() {
           <div>
             <h3 class="profile-section-title" style="margin-bottom:4px;">🏅 Badges & Achievements</h3>
             <p style="color:var(--text-secondary); font-size:0.85rem; margin:0;">
-              Earn badges by completing tasks, maintaining streaks, participating in discussions, and excelling in teamwork.
+              ${isOwnProfile
+                ? 'Earn badges by completing tasks, maintaining streaks, participating in discussions, and excelling in teamwork.'
+                : `Badges and milestones unlocked by ${escapeHtml(profile.displayName)}.`
+              }
             </p>
           </div>
           <span style="font-family:var(--font-heading); font-size:0.85rem; color:var(--accent); background:var(--bg-card); padding:6px 14px; border-radius:12px; border:1px solid var(--border); box-shadow:var(--shadow-sm);">
@@ -336,6 +351,14 @@ export async function renderProfile() {
     });
   });
 
-  document.getElementById('btn-profile-back').addEventListener('click', () => navigate('#/dashboard'));
-  document.getElementById('btn-edit-profile').addEventListener('click', () => navigate('#/settings'));
+  document.getElementById('btn-profile-back')?.addEventListener('click', () => {
+    if (window.history.length > 1) {
+      window.history.back();
+    } else {
+      navigate('#/dashboard');
+    }
+  });
+  if (isOwnProfile) {
+    document.getElementById('btn-edit-profile')?.addEventListener('click', () => navigate('#/settings'));
+  }
 }

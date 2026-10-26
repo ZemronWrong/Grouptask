@@ -182,7 +182,7 @@ function renderPulsePanel(group, tasks, recentEvents, members) {
                 ? `<img src="${m.avatar}" alt="Avatar" style="width:100%;height:100%;border-radius:50%;object-fit:cover;">`
                 : (m.avatarType === 'default' && m.avatarEmoji) ? m.avatarEmoji
                 : escapeHtml(m.displayName?.[0] || '?');
-              return `<div class="pulse-avatar" title="${escapeHtml(m.displayName)}">${avatarContent}</div>`;
+              return `<a href="#/profile/${m.uid || m.id}" class="pulse-avatar" title="${escapeHtml(m.displayName)} (Click to view achievements)" style="text-decoration:none; cursor:pointer;">${avatarContent}</a>`;
             }).join('')}
             ${displayActiveMembers.length > 6 ? `<div class="pulse-avatar pulse-avatar-more">+${displayActiveMembers.length - 6}</div>` : ''}
           </div>

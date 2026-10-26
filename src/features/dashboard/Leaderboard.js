@@ -108,7 +108,7 @@ export async function renderLeaderboard(groupId) {
 
           <div class="podium">
             ${top3.map((m, i) => `
-              <div class="podium-card podium-${i+1}">
+              <a href="#/profile/${m.uid || m.id}" class="podium-card podium-${i+1}" style="text-decoration:none; color:inherit; cursor:pointer;" title="View ${escapeHtml(m.displayName)}'s profile & achievements">
                 <span class="podium-rank">
                   ${i === 0 ? '👑' : i === 1 ? '🥈' : '🥉'}
                 </span>
@@ -116,8 +116,9 @@ export async function renderLeaderboard(groupId) {
                 <div style="text-align:center;">
                   <div class="podium-name">${escapeHtml(m.displayName)}</div>
                   <div class="podium-points">${m.boardPoints} <span style="font-size:0.7rem;">BP</span></div>
+                  <div style="font-size:0.75rem; color:var(--primary); margin-top:4px; font-weight:600;">View Profile ➔</div>
                 </div>
-              </div>
+              </a>
             `).join('')}
           </div>
 
@@ -132,7 +133,10 @@ export async function renderLeaderboard(groupId) {
               <div class="lb-row">
                 <div class="lb-rank">#${i + 4}</div>
                 <div>
-                  <span style="font-family:var(--font-heading); font-weight:600; color:var(--text);">${escapeHtml(m.displayName)}</span>
+                  <a href="#/profile/${m.uid || m.id}" class="lb-member-link" style="font-family:var(--font-heading); font-weight:600; color:var(--text); text-decoration:none; display:inline-flex; align-items:center; gap:6px;" title="View ${escapeHtml(m.displayName)}'s achievements">
+                    <span>${escapeHtml(m.displayName)}</span>
+                    <span style="font-size:0.75rem; color:var(--primary); opacity:0.8;">➔</span>
+                  </a>
                 </div>
                 <div style="font-family:var(--font-heading); font-weight:bold; color:var(--primary); font-size:1.05rem;">
                   ${m.boardPoints} BP
@@ -143,7 +147,7 @@ export async function renderLeaderboard(groupId) {
                     const icon = meta?.icon || '🏅';
                     const label = meta?.label || 'Badge';
                     const how = meta?.howToGet || meta?.description || 'Earned achievement';
-                    return `<span title="${escapeHtml(`${label} — How to get: ${how}`)}" style="font-size:1.2rem; cursor:help;">${icon}</span>`;
+                    return `<a href="#/profile/${m.uid || m.id}" title="${escapeHtml(`${label} — How to get: ${how} (Click to view full achievements)`)}" style="font-size:1.2rem; cursor:pointer; text-decoration:none;">${icon}</a>`;
                   }).join('')}
                 </div>
               </div>

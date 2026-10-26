@@ -90,14 +90,16 @@ function memberCardHTML(data, isAdmin, isOwner, me, groupId) {
   return `
     <div class="member-card${restricted ? ' member-restricted' : ''}">
       <div class="member-card-header">
-        <div class="avatar avatar-lg">${escapeHtml(member.displayName?.[0] || '?')}</div>
-        <div>
-          <h3 class="member-name">
-            ${escapeHtml(member.displayName)}
-            ${isMe ? '<span class="you-badge">(You)</span>' : ''}
-          </h3>
-          <div class="member-role">${getRoleName(member.role)}</div>
-        </div>
+        <a href="#/profile/${member.uid || member.id}" style="display:flex; align-items:center; gap:12px; text-decoration:none; color:inherit; flex:1;" title="View ${escapeHtml(member.displayName)}'s profile & achievements">
+          <div class="avatar avatar-lg">${escapeHtml(member.displayName?.[0] || '?')}</div>
+          <div>
+            <h3 class="member-name">
+              ${escapeHtml(member.displayName)}
+              ${isMe ? '<span class="you-badge">(You)</span>' : ''}
+            </h3>
+            <div class="member-role">${getRoleName(member.role)}</div>
+          </div>
+        </a>
       </div>
 
       <div class="member-stats-row">
@@ -113,6 +115,10 @@ function memberCardHTML(data, isAdmin, isOwner, me, groupId) {
           <span class="member-stat-val" style="${overdue > 0 ? 'color:var(--danger);' : ''}">${overdue}</span>
           <span class="member-stat-label">Overdue</span>
         </div>
+      <div style="margin-top:14px; border-top:1px solid var(--border); padding-top:10px;">
+        <a href="#/profile/${member.uid || member.id}" class="btn btn-secondary btn-sm" style="display:flex; align-items:center; justify-content:center; gap:6px; text-decoration:none; width:100%; font-size:0.8rem; font-family:var(--font-heading);">
+          <span>🏅</span> View Achievements & Profile
+        </a>
       </div>
 
       ${restricted ? `

@@ -46,7 +46,7 @@ export function taskCardHTML(task, members, proofs, comments, viewIsAdmin, me, p
     const prof = profileMap[assignee.uid];
     const hasPhoto = prof?.avatarType === 'custom' && prof?.avatar;
     assigneeAvatarHTML = `
-      <div class="task-assignee" data-member-uid="${assignee.uid}">
+      <a href="#/profile/${assignee.uid || assignee.id}" class="task-assignee" data-member-uid="${assignee.uid}" style="text-decoration:none; color:inherit; cursor:pointer;" title="View ${escapeHtml(assignee.displayName || 'member')}'s achievements">
         <div class="avatar" style="overflow:hidden;">
           ${hasPhoto
             ? `<img src="${prof.avatar}" alt="${escapeHtml(assignee.displayName?.[0] || '?')}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`
@@ -57,7 +57,7 @@ export function taskCardHTML(task, members, proofs, comments, viewIsAdmin, me, p
           <span class="task-assignee-label">Assigned</span>
           <span class="task-assignee-name">${escapeHtml(assignee.displayName || assignee.uid)}</span>
         </div>
-      </div>`;
+      </a>\`;
   } else {
     assigneeAvatarHTML = `<span class="task-assignee-label" style="margin:0; opacity:0.6;">Unassigned</span>`;
   }

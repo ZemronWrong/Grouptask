@@ -1269,6 +1269,9 @@ textarea { resize: vertical; }
 .podium-1 { border-color: #d4af37; box-shadow: 0 0 20px rgba(212, 175, 55, 0.2); order: 2; padding-bottom: 32px; }
 .podium-2 { border-color: #c0c0c0; order: 1; }
 .podium-3 { border-color: #cd7f32; order: 3; }
+.podium-card:hover { transform: translateY(-4px); box-shadow: var(--shadow-lg); border-color: var(--primary); }
+.lb-member-link { transition: color var(--transition); }
+.lb-member-link:hover { color: var(--primary) !important; text-decoration: underline; }
 .podium-rank { font-size: 2rem; }
 .podium-name { font-family: var(--font-heading); color: var(--text); font-size: 0.9rem; font-weight: 600; }
 .podium-level { font-family: var(--font-heading); font-size: 0.65rem; color: var(--accent); text-transform: uppercase; letter-spacing: 0.05em; }

@@ -372,7 +372,7 @@ export async function openTaskDetailModal(task, groupId, members, viewIsAdmin) {
             ${task.deadline ? `<span class="badge badge-subtle">⏳ ${formatRelative(task.deadline)}</span>` : ''}
             <span class="badge badge-subtle">✨ ${task.weight} ${getTerm('rewardIcon')}</span>
             <span class="badge badge-subtle">📌 ${STATUS_LABELS[task.status] || task.status}</span>
-            ${assignee ? `<span class="badge badge-subtle">👤 ${escapeHtml(assignee.displayName)}</span>` : ''}
+            ${assignee ? `<a href="#/profile/${assignee.uid || assignee.id}" class="badge badge-subtle link-assignee-profile" style="text-decoration:none; cursor:pointer;" title="View ${escapeHtml(assignee.displayName)}'s profile & achievements">👤 ${escapeHtml(assignee.displayName)}</a>` : ''}
           </div>
 
           <p style="font-size:0.95rem; line-height:1.6; margin-bottom:24px; white-space:pre-wrap; color:var(--text-secondary);">${escapeHtml(task.description || 'No description provided.')}</p>
@@ -395,6 +395,10 @@ export async function openTaskDetailModal(task, groupId, members, viewIsAdmin) {
       </div>
     </div>
   `;
+
+  container.querySelector('.link-assignee-profile')?.addEventListener('click', () => {
+    document.getElementById('task-detail-modal')?.remove();
+  });
 
   // Re-render only the comments section on new comment
   bindCommentEvents(task.id, groupId, members, async () => {

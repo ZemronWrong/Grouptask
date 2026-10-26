@@ -110,6 +110,12 @@ async function buildMemberPopup(member, groupId) {
             </div>
           </div>
         ` : `<p style="font-size:0.8rem; color:var(--text-muted); margin-bottom:8px;">No badges yet.</p>`}
+
+        <div style="margin-top:16px; border-top:1px solid var(--border); padding-top:12px;">
+          <a href="#/profile/${member.uid || member.id}" class="btn btn-primary btn-sm btn-block" id="btn-view-member-full-profile" style="text-decoration:none; display:flex; align-items:center; justify-content:center; gap:6px; font-family:var(--font-heading);">
+            <span>🏅</span> View Full Profile & Achievements
+          </a>
+        </div>
       </div>
     </div>
   `;
@@ -286,6 +292,9 @@ export async function openMemberPopup(member, gId) {
   document.getElementById('member-popup-overlay')?.remove();
   document.body.insertAdjacentHTML('beforeend', popupHTML);
   document.getElementById('member-popup-close')?.addEventListener('click', () => {
+    document.getElementById('member-popup-overlay')?.remove();
+  });
+  document.getElementById('btn-view-member-full-profile')?.addEventListener('click', () => {
     document.getElementById('member-popup-overlay')?.remove();
   });
   document.getElementById('member-popup-overlay')?.addEventListener('click', (e) => {
