@@ -1287,9 +1287,55 @@ textarea { resize: vertical; }
 .eval-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
 .eval-pe-score { font-family: var(--font-heading); color: var(--accent); font-weight: bold; font-size: 1.1rem; padding: 4px 12px; background: var(--primary-soft); border-radius: 20px; }
 
-/* Progress Bar */
-.progress-bar { flex: 1; height: 8px; background: var(--bg); border-radius: 10px; overflow: hidden; border: 1px solid var(--border); }
-.progress-fill { height: 100%; background: var(--primary); border-radius: 10px; transition: width 1s; }
+/* ═══════════════════════════════════════════
+   PIXEL HEALTH & PROGRESS BARS (Pixel UI Pack)
+   ═══════════════════════════════════════════ */
+.progress-bar,
+.pulse-progress-bar {
+  flex: 1;
+  min-height: 12px;
+  background: #0d0f14;
+  border-radius: 4px;
+  position: relative;
+  overflow: hidden;
+  box-sizing: border-box;
+  padding: 1px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 
+    0 0 0 1px #11141a,
+    0 2px 4px rgba(0, 0, 0, 0.6),
+    inset 0 1px 3px rgba(0, 0, 0, 0.8);
+}
+
+.progress-fill,
+.pulse-progress-fill {
+  height: 100%;
+  border-radius: 2px;
+  position: relative;
+  transition: width 0.8s cubic-bezier(0.22, 1, 0.36, 1);
+  background-color: var(--accent, #10b981);
+  background-image: 
+    linear-gradient(180deg, 
+      rgba(255, 255, 255, 0.45) 0%, 
+      rgba(255, 255, 255, 0.15) 30%, 
+      rgba(0, 0, 0, 0.08) 50%, 
+      rgba(0, 0, 0, 0.42) 100%
+    ),
+    repeating-linear-gradient(90deg, 
+      transparent 0, 
+      transparent 6px, 
+      rgba(0, 0, 0, 0.28) 6px, 
+      rgba(0, 0, 0, 0.28) 8px
+    );
+  box-shadow: 
+    inset 0 1px 1px rgba(255, 255, 255, 0.6),
+    inset 0 -1px 2px rgba(0, 0, 0, 0.6),
+    0 0 8px rgba(16, 185, 129, 0.35);
+}
+
+.badge-progress-wrap .progress-bar {
+  min-height: 10px;
+}
 
 /* Members Grid */
 .members-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 20px; margin-bottom: 32px; padding: 24px; }
@@ -1809,6 +1855,48 @@ textarea { resize: vertical; }
   width: 24px;
   height: 24px;
   display: block;
+}
+
+/* ═══════════════════════════════════════════
+   AUTHENTIC PIXEL ART BADGE ICONS
+   ═══════════════════════════════════════════ */
+.pixel-badge-icon {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+  image-rendering: pixelated;
+  image-rendering: -moz-crisp-edges;
+  image-rendering: crisp-edges;
+  display: inline-block;
+  vertical-align: middle;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.45));
+  transition: transform 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.badge-card-icon-wrap .pixel-badge-icon {
+  width: 38px;
+  height: 38px;
+}
+
+.badge-card:hover .pixel-badge-icon {
+  transform: scale(1.15) rotate(3deg);
+}
+
+.comment-badge-inline .pixel-badge-icon {
+  width: 16px;
+  height: 16px;
+  margin-right: 2px;
+}
+
+.profile-badge-pill .pixel-badge-icon {
+  width: 22px;
+  height: 22px;
+}
+
+.achievement-popup-icon .pixel-badge-icon {
+  width: 52px;
+  height: 52px;
+  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.6));
 }
 
 .badge-card-title-wrap {
