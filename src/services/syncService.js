@@ -82,7 +82,10 @@ export async function fetchGroupDataOnce(groupId) {
       await Promise.all(uids.map(async (uid) => {
         const profileSnap = await getDoc(fsDoc(fsDb, 'userProfiles', uid));
         if (profileSnap.exists()) {
-          const profile = { id: profileSnap.id, ...profileSnap.data() };
+          // B8 fix: normalizeTimestamps was missing here — Firestore Timestamp objects
+          // were not converted to ms numbers, so resolveConflict always picked 'local'
+          // and remote profile changes (avatar, displayName) never reached other devices.
+          const profile = normalizeTimestamps({ id: profileSnap.id, ...profileSnap.data() });
           const local = await get(STORES.USER_PROFILES, profile.id).catch(() => null);
           const { winner, doc } = resolveConflict(local, profile);
           if (winner === 'remote' && doc) await put(STORES.USER_PROFILES, doc);
@@ -204,7 +207,9 @@ function listenForChanges(groupId) {
       for (const uid of uids) {
         const profileUnsub = onSnapshot(fsDoc(fsDb, 'userProfiles', uid), async (docSnap) => {
           if (docSnap.exists()) {
-            const remoteProfile = { id: docSnap.id, ...docSnap.data() };
+            // B8 fix: normalizeTimestamps was missing here — same Timestamp-vs-number bug
+            // that was fixed for all other collections but was overlooked for userProfiles.
+            const remoteProfile = normalizeTimestamps({ id: docSnap.id, ...docSnap.data() });
             const localProfile = await get(STORES.USER_PROFILES, uid).catch(() => null);
             const { winner, doc } = resolveConflict(localProfile, remoteProfile);
             if (winner === 'remote' && doc) {
