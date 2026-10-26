@@ -39,8 +39,13 @@ service cloud.firestore {
      * Returns true if the user is the creator/admin of a group.
      */
     function isGroupAdmin(groupId) {
-      return isAuthed() &&
-        get(/databases/$(database)/documents/groups/$(groupId)).data.createdBy == request.auth.uid;
+      return isAuthed() && (
+        get(/databases/$(database)/documents/groups/$(groupId)).data.createdBy == request.auth.uid ||
+        (
+          exists(/databases/$(database)/documents/members/$(groupId + '_' + request.auth.uid)) &&
+          get(/databases/$(database)/documents/members/$(groupId + '_' + request.auth.uid)).data.role in ['owner', 'co-admin']
+        )
+      );
     }
 
     /**
@@ -60,9 +65,9 @@ service cloud.firestore {
       allow read: if isAuthed();
       allow create: if isAuthed() &&
         request.resource.data.createdBy == request.auth.uid;
-      // Admin can do any update. Any authed user can update ONLY to add a join request
-      // (the joinRequests field grows — no other fields are touched).
-      allow update: if isGroupAdmin(groupId) ||
+      // Admin can do any update except scoresHidden (A4). Any authed user can update ONLY to add a join request.
+      allow update: if (isGroupAdmin(groupId) &&
+         !request.resource.data.diff(resource.data).affectedKeys().hasAny(['scoresHidden'])) ||
         (isAuthed() &&
          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['joinRequests', 'updatedAt']));
       allow delete: if isGroupAdmin(groupId);
@@ -77,9 +82,17 @@ service cloud.firestore {
         resource.data.uid == request.auth.uid ||
         isMemberOfGroup(resource.data.groupId)
       );
-      allow create: if isAuthed() &&
-        request.resource.data.uid == request.auth.uid &&
-        'groupId' in request.resource.data;
+      allow create: if isAuthed() && 'groupId' in request.resource.data && (
+        // Case 1: Group admin adds or accepts a member (B2)
+        isGroupAdmin(request.resource.data.groupId) ||
+        // Case 2: Group owner creates their initial membership
+        (request.resource.data.uid == request.auth.uid &&
+         get(/databases/$(database)/documents/groups/$(request.resource.data.groupId)).data.createdBy == request.auth.uid) ||
+        // Case 3: User joins with a valid invite code
+        (request.resource.data.uid == request.auth.uid &&
+         'inviteCode' in request.resource.data &&
+         request.resource.data.inviteCode == get(/databases/$(database)/documents/groups/$(request.resource.data.groupId)).data.inviteCode)
+      );
       allow update: if isAuthed() && (
         resource.data.uid == request.auth.uid ||
         isGroupAdmin(resource.data.groupId)
@@ -108,8 +121,11 @@ service cloud.firestore {
         request.resource.data.status != 'done';
 
       allow update: if isAuthed() && isMemberOfGroup(resource.data.groupId) && (
-        // Admins can do anything
-        isGroupAdmin(resource.data.groupId) ||
+        // Admins can update tasks, but to set status='done', the admin cannot be the assignee (B4)
+        (isGroupAdmin(resource.data.groupId) && (
+          request.resource.data.status != 'done' ||
+          resource.data.assignedTo != (resource.data.groupId + '_' + request.auth.uid)
+        )) ||
         (
           // Members may update if they are ALREADY the assignee, OR they are self-assigning an unassigned task
           (
@@ -159,15 +175,13 @@ service cloud.firestore {
     // aggregated average score is exposed via their member record).
     // Group admin CAN read all reviews for governance/oversight.
     match /peerReviews/{reviewId} {
-      allow read: if isAuthed() && (
-        isMemberOfGroup(resource.data.groupId) ||
-        resource.data.reviewerId == request.auth.uid ||
-        isGroupAdmin(resource.data.groupId)
-      );
+      // A1: Individual peer ratings are strictly private — only the reviewer can read them
+      allow read: if isAuthed() &&
+        resource.data.reviewerId == request.auth.uid;
       allow create: if isWritingToOwnGroup() &&
         request.resource.data.reviewerId == request.auth.uid &&
-        // Prevent self-review
-        request.resource.data.evaluateeId != request.auth.uid;
+        // Prevent self-review (evaluateeId is groupId_uid) (A1 bug fix)
+        request.resource.data.evaluateeId != (request.resource.data.groupId + '_' + request.auth.uid);
       // A reviewer can update/overwrite their own review
       allow update: if isAuthed() &&
         resource.data.reviewerId == request.auth.uid &&
@@ -193,9 +207,13 @@ service cloud.firestore {
     match /badges/{badgeId} {
       allow read: if isAuthed() &&
         isMemberOfGroup(resource.data.groupId);
+      // B5: Allow badge owner or group admin to write badges for group members
       allow create: if isAuthed() &&
         isMemberOfGroup(request.resource.data.groupId) &&
-        request.resource.data.uid == request.auth.uid;
+        (
+          request.resource.data.uid == request.auth.uid ||
+          isGroupAdmin(request.resource.data.groupId)
+        );
       allow update: if false; // Badges are immutable once awarded
       allow delete: if isAuthed() &&
         isGroupAdmin(resource.data.groupId);
@@ -209,8 +227,11 @@ service cloud.firestore {
         resource.data.userId == request.auth.uid ||
         isMemberOfGroup(resource.data.boardId)
       );
-      allow create: if isAuthed() &&
-        request.resource.data.userId == request.auth.uid;
+      // B5: Allow user or fellow board member/admin to record events (e.g. CARD_COMPLETE by admin, PEER_EVAL by reviewer)
+      allow create: if isAuthed() && (
+        request.resource.data.userId == request.auth.uid ||
+        ('boardId' in request.resource.data && isMemberOfGroup(request.resource.data.boardId))
+      );
       allow update: if false; // Events are immutable
       allow delete: if false; // Events are immutable
     }
@@ -233,10 +254,11 @@ service cloud.firestore {
     match /proofSubmissions/{submissionId} {
       allow read: if isAuthed() &&
         isMemberOfGroup(resource.data.groupId);
+      // B7: memberId is composite groupId_uid
       allow create: if isWritingToOwnGroup() &&
-        request.resource.data.memberId == request.auth.uid;
+        request.resource.data.memberId == (request.resource.data.groupId + '_' + request.auth.uid);
       allow update: if isAuthed() && (
-        resource.data.memberId == request.auth.uid ||
+        resource.data.memberId == (resource.data.groupId + '_' + request.auth.uid) ||
         isGroupAdmin(resource.data.groupId)
       );
       allow delete: if isAuthed() &&

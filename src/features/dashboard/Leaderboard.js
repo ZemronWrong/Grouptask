@@ -494,7 +494,7 @@ export async function renderEvaluation(groupId) {
         await notify({
           uid: evaluatee.uid, type: 'evaluation_received',
           title: 'New Peer Evaluation',
-          message: `Someone rated you ${score}★`,
+          message: 'You received a new peer evaluation',
           icon: '⭐', actionLink: `#/group/${groupId}/leaderboard`, groupId
         });
       }

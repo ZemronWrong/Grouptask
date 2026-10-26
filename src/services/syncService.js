@@ -55,13 +55,23 @@ export async function startSync(groupId) {
  */
 export async function fetchGroupDataOnce(groupId) {
   if (isMock || !navigator.onLine) return;
-  const collections = [
-    'tasks', 'members', 'peerRatings', 'peerReviews',
-    'badges', 'points', 'proofSubmissions', 'events', 'comments',
+  // B5: Fetch each collection individually so one failure doesn't abort all
+  // others (e.g. a rules rejection on peerReviews shouldn't block tasks).
+  // Events use 'boardId' not 'groupId' — query adjusted accordingly.
+  const collectionQueries = [
+    { colName: 'tasks',           field: 'groupId' },
+    { colName: 'members',         field: 'groupId' },
+    { colName: 'peerRatings',     field: 'groupId' },
+    { colName: 'peerReviews',     field: 'groupId' },
+    { colName: 'badges',          field: 'groupId' },
+    { colName: 'points',          field: 'groupId' },
+    { colName: 'proofSubmissions',field: 'groupId' },
+    { colName: 'events',          field: 'boardId'  }, // B5: events store boardId, not groupId
+    { colName: 'comments',        field: 'groupId' },
   ];
-  try {
-    await Promise.all(collections.map(async (colName) => {
-      const q = query(fsCollection(fsDb, colName), where('groupId', '==', groupId));
+  await Promise.all(collectionQueries.map(async ({ colName, field }) => {
+    try {
+      const q = query(fsCollection(fsDb, colName), where(field, '==', groupId));
       const snap = await getDocs(q);
       const storeName = storeForCollection(colName);
       for (const docSnap of snap.docs) {
@@ -70,7 +80,11 @@ export async function fetchGroupDataOnce(groupId) {
         const { winner, doc } = resolveConflict(localDoc, remoteDoc);
         if (winner === 'remote' && doc) await put(storeName, doc);
       }
-    }));
+    } catch (colErr) {
+      // Isolate: log but continue fetching other collections
+      console.warn(`[Sync] fetchGroupDataOnce: failed to fetch '${colName}':`, colErr.message);
+    }
+  }));
 
     // Also pull each member's userProfile so avatars/photos are visible to all group members.
     // userProfiles are keyed by uid (not groupId), so we fetch them individually by ID.
@@ -95,10 +109,7 @@ export async function fetchGroupDataOnce(groupId) {
       console.warn('[Sync] Could not fetch member userProfiles:', profileErr.message);
     }
 
-    console.info(`[Sync] fetchGroupDataOnce complete for group ${groupId}`);
-  } catch (err) {
-    console.warn('[Sync] fetchGroupDataOnce failed:', err.message);
-  }
+  console.info(`[Sync] fetchGroupDataOnce complete for group ${groupId}`);
 }
 
 let flushTimeout = null;
@@ -149,20 +160,23 @@ function normalizeTimestamps(doc) {
 }
 
 function listenForChanges(groupId) {
-  // Bug fix: 'comments' was missing here — User B never received comments from Firestore.
-  const collections = [
-    'tasks', 'members', 'peerRatings', 'peerReviews',
-    'badges', 'points', 'proofSubmissions', 'events', 'comments',
+  // B5: events use 'boardId'; all others use 'groupId'. Bug fix: 'comments' was missing.
+  const colListeners = [
+    { colName: 'tasks',            field: 'groupId' },
+    { colName: 'members',          field: 'groupId' },
+    { colName: 'peerRatings',      field: 'groupId' },
+    { colName: 'peerReviews',      field: 'groupId' },
+    { colName: 'badges',           field: 'groupId' },
+    { colName: 'points',           field: 'groupId' },
+    { colName: 'proofSubmissions', field: 'groupId' },
+    { colName: 'events',           field: 'boardId'  },
+    { colName: 'comments',         field: 'groupId' },
   ];
 
-  for (const colName of collections) {
-    const q = query(fsCollection(fsDb, colName), where('groupId', '==', groupId));
+  for (const { colName, field } of colListeners) {
+    const q = query(fsCollection(fsDb, colName), where(field, '==', groupId));
     const unsub = onSnapshot(q, (snapshot) => {
       snapshot.docChanges().forEach(async (change) => {
-        // Normalize Firestore Timestamp objects → ms numbers BEFORE conflict resolution.
-        // Without this, serverTimestamp() fields come back as { seconds, nanoseconds }
-        // and the >= comparison in resolveConflict always returns false (object vs number),
-        // so 'remote' never wins and the other user's screen never updates.
         const remoteDoc = normalizeTimestamps({ id: change.doc.id, ...change.doc.data() });
         const storeName = storeForCollection(colName);
 
@@ -256,25 +270,37 @@ export async function flushQueue() {
           // already the document path) and replace client timestamps with
           // server timestamps so the authoritative time comes from Firebase,
           // not the client clock (which may be skewed or manipulated).
+          //
+          // B10: Only stamp creation-time fields (createdAt, completedAt,
+          // joinedAt) when the record is first written ('add'). On subsequent
+          // updates we leave those fields alone so the original timestamps are
+          // preserved. updatedAt is always replaced with serverTimestamp().
           const data = { ...entry.data };
           delete data.id;
-          const SERVER_TS_FIELDS = ['createdAt', 'updatedAt', 'completedAt', 'joinedAt'];
-          for (const field of SERVER_TS_FIELDS) {
-            if (field in data && data[field] != null) {
-              data[field] = serverTimestamp();
+          const CREATION_TS_FIELDS = ['createdAt', 'completedAt', 'joinedAt'];
+          if (entry.operation === 'add') {
+            for (const field of CREATION_TS_FIELDS) {
+              if (field in data && data[field] != null) data[field] = serverTimestamp();
             }
           }
+          if ('updatedAt' in data && data.updatedAt != null) data.updatedAt = serverTimestamp();
           await setDoc(ref, data, { merge: true });
         }
         await removeSyncQueueItem(entry.id);
       } catch (err) {
         console.warn('[Sync] Failed to push entry:', err.message);
         // "Poison Pill" Prevention:
-        // If the server explicitly rejects the write due to security rules,
-        // we MUST remove it from the queue, otherwise it will permanently
-        // deadlock all future sync operations.
-        if (err.code === 'permission-denied') {
-          console.error('[Sync] Permanent rejection. Removing invalid item from queue to prevent deadlock.');
+        // If the server permanently rejects the write (security rules, bad data,
+        // missing document, etc.) we MUST remove it from the queue. A permanent
+        // error will never succeed on retry and would deadlock all future syncs.
+        //
+        // B9: covers all permanent Firestore error codes, not just permission-denied.
+        const PERMANENT_ERRORS = new Set([
+          'permission-denied', 'invalid-argument', 'failed-precondition',
+          'not-found', 'already-exists', 'unauthenticated',
+        ]);
+        if (PERMANENT_ERRORS.has(err.code)) {
+          console.error(`[Sync] Permanent rejection (${err.code}). Removing invalid item from queue to prevent deadlock.`);
           await removeSyncQueueItem(entry.id);
         } else {
           // Transient error (e.g. network drop mid-flight). Break and retry later.

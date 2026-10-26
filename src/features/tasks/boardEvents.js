@@ -146,7 +146,8 @@ export function bindBoardEvents(boardContext, rerenderBoard) {
     }
 
     if (e.target.closest('#btn-copy-link-bottom')) {
-      navigator.clipboard.writeText(`https://app.grouptask.io/board/${group?.inviteCode}`);
+      const inviteUrl = `${window.location.origin}/#/?join=${group?.inviteCode || ''}`;
+      navigator.clipboard.writeText(inviteUrl);
       showToast('Link copied to clipboard!');
       return;
     }
@@ -485,6 +486,12 @@ export async function moveTask(taskId, newStatus, groupId, members) {
       showToast('You can only move your own tasks.');
       return;
     }
+  } else {
+    // B4: Admin cannot approve their own card to done
+    if (newStatus === 'done' && isMyCard) {
+      showToast('Admins cannot approve their own tasks. Another admin must approve this.');
+      return;
+    }
   }
 
   const oldStatus = task.status;
@@ -539,11 +546,23 @@ async function handleReview(status, groupId, members, me, rerenderBoard) {
   const task     = await get(STORES.TASKS, taskId);
   const assignee = members.find((m) => m.id === task.assignedTo);
 
+  // B4: Admin cannot approve their own proof/task
+  if (status === 'approved' && task?.assignedTo === me?.id) {
+    showToast('Admins cannot approve their own tasks. Another admin must approve this.');
+    return;
+  }
+
   if (proofId) {
     const proof = await get(STORES.PROOF_SUBMISSIONS, proofId);
-    proof.status = status; proof.note = note; proof.updatedAt = Date.now();
-    await put(STORES.PROOF_SUBMISSIONS, proof);
-    await addToSyncQueue({ collection: 'proofSubmissions', docId: proofId, operation: 'update', data: proof });
+    if (proof) {
+      proof.status = status;
+      proof.note = note;
+      proof.reviewedBy = me?.id || null;
+      proof.reviewedByUid = me?.uid || null;
+      proof.updatedAt = Date.now();
+      await put(STORES.PROOF_SUBMISSIONS, proof);
+      await addToSyncQueue({ collection: 'proofSubmissions', docId: proofId, operation: 'update', data: proof });
+    }
   }
 
   let newBadges = [];

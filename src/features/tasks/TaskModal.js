@@ -142,7 +142,7 @@ export function shareModalHTML(members, group, profileMap = {}) {
                 const avatarHTML = hasPhoto
                   ? `<img src="${prof.avatar}" alt="${escapeHtml(m.displayName?.[0] || '?')}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`
                   : escapeHtml(m.displayName?.[0] || '?');
-                const email = prof.email || m.email || (m.uid.includes('@') ? m.uid : `${m.displayName.toLowerCase().replace(/[^a-z0-9]/g, '') || 'member'}@grouptask.io`);
+                const email = prof.email || m.email || (m.uid.includes('@') ? m.uid : '');
 
                 return `
                   <div class="share-member-row" data-member-name="${escapeHtml(m.displayName.toLowerCase())}">
@@ -151,7 +151,7 @@ export function shareModalHTML(members, group, profileMap = {}) {
                     </div>
                     <div class="share-member-info" style="flex:1; min-width:0;">
                       <span class="share-member-name" style="font-size:0.85rem; font-weight:600; color:var(--text);">${escapeHtml(m.displayName)}</span>
-                      <span class="share-member-email" style="font-size:0.75rem; color:var(--text-muted);">${escapeHtml(email)}</span>
+                      ${email ? `<span class="share-member-email" style="font-size:0.75rem; color:var(--text-muted);">${escapeHtml(email)}</span>` : ''}
                     </div>
                     ${m.role === 'owner' ? `
                       <span class="share-role-locked" style="background:var(--primary-soft); color:var(--primary); padding:3px 10px; border-radius:12px; font-size:0.72rem; font-family:var(--font-heading); font-weight:700;">OWNER</span>
@@ -169,7 +169,7 @@ export function shareModalHTML(members, group, profileMap = {}) {
             </div>
 
             <div class="link-box" style="margin-top:16px;">
-              <span class="link-url">https://app.grouptask.io/board/${group?.inviteCode}</span>
+              <span class="link-url">${window.location.origin}/#/?join=${group?.inviteCode || ''}</span>
               <button class="btn btn-secondary btn-sm" id="btn-copy-link-bottom">COPY</button>
             </div>
           </div>
@@ -238,7 +238,7 @@ export function boardMembersModalHTML(members, profileMap = {}) {
                 ? `<img src="${prof.avatar}" alt="${escapeHtml(m.displayName?.[0] || '?')}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`
                 : escapeHtml(m.displayName?.[0] || '?');
               const roleLabel = m.role === 'owner' ? 'Owner' : m.role === 'co-admin' ? 'Co-owner' : m.role === 'viewer' ? 'Only View' : 'Member';
-              const email = prof.email || m.email || (m.uid.includes('@') ? m.uid : `${m.displayName.toLowerCase().replace(/[^a-z0-9]/g, '') || 'member'}@grouptask.io`);
+              const email = prof.email || m.email || (m.uid.includes('@') ? m.uid : '');
 
               return `
                 <div class="board-member-item" data-member-id="${m.id}" data-name="${escapeHtml(m.displayName.toLowerCase())}" data-email="${escapeHtml(email.toLowerCase())}" style="display:flex; align-items:center; gap:12px; padding:10px 12px; border-radius:10px; border:1px solid var(--border); background:var(--bg-card); cursor:pointer; transition:all var(--transition);">
@@ -247,7 +247,7 @@ export function boardMembersModalHTML(members, profileMap = {}) {
                   </div>
                   <div style="flex:1; min-width:0;">
                     <div style="font-weight:600; font-size:0.9rem; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(m.displayName)}</div>
-                    <div style="font-size:0.75rem; color:var(--text-muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(email)}</div>
+                    ${email ? `<div style="font-size:0.75rem; color:var(--text-muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(email)}</div>` : ''}
                   </div>
                   <span class="profile-role-badge" style="font-size:0.7rem; padding:3px 8px; flex-shrink:0;">${roleLabel}</span>
                 </div>

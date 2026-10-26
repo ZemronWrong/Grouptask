@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app';
-import { getFirestore } from 'firebase/firestore';
+import { initializeFirestore } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 // Analytics removed (UREB A5): no usage data may be sent to third-party services during the study.
 
@@ -26,7 +26,8 @@ let auth = null;
 if (!isMock) {
   try {
     app  = initializeApp(firebaseConfig);
-    fsDb = getFirestore(app);
+    // B9: ignoreUndefinedProperties prevents local undefined values from throwing errors on setDoc
+    fsDb = initializeFirestore(app, { ignoreUndefinedProperties: true });
     auth = getAuth(app);
 
     // NOTE: enableIndexedDbPersistence is intentionally NOT called here.

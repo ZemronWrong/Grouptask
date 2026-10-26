@@ -62,8 +62,7 @@ async function buildMemberPopup(member, groupId) {
     ? `<img src="${profile.avatar}" alt="${escapeHtml(member.displayName?.[0] || '?')}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`
     : escapeHtml(member.displayName?.[0] || '?');
   const mockUsers = JSON.parse(localStorage.getItem('grouptask_mock_users') || '[]');
-  const mockUser = mockUsers.find(u => u.uid === member.uid);
-  const email = profile.email || member.email || mockUser?.email || (member.uid === currentUser()?.uid ? currentUser()?.email : null) || `${member.displayName.toLowerCase().replace(/[^a-z0-9]/g, '') || 'member'}@grouptask.io`;
+  const email = profile.email || member.email || mockUser?.email || (member.uid === currentUser()?.uid ? currentUser()?.email : null) || '';
 
   return `
     <div class="member-popup-overlay" id="member-popup-overlay">
@@ -73,9 +72,11 @@ async function buildMemberPopup(member, groupId) {
           <div class="avatar" style="width:56px;height:56px;font-size:1.4rem;flex-shrink:0;overflow:hidden;">${avatarHTML}</div>
           <div>
             <h3 style="margin:0 0 4px 0; font-size:1.1rem;">${escapeHtml(member.displayName)}</h3>
-            <div style="font-size:0.78rem; color:var(--text-secondary); margin-bottom:4px; display:flex; align-items:center; gap:4px;">
-              <span>✉️</span> <span>${escapeHtml(email)}</span>
-            </div>
+            ${email ? `
+              <div style="font-size:0.78rem; color:var(--text-secondary); margin-bottom:4px; display:flex; align-items:center; gap:4px;">
+                <span>✉️</span> <span>${escapeHtml(email)}</span>
+              </div>
+            ` : ''}
             <div style="font-size:0.78rem; color:var(--primary); font-family:var(--font-heading); font-weight:600;">
               ${member.role === 'owner' ? 'Owner' : member.role === 'co-admin' ? 'Co-owner' : member.role === 'viewer' ? 'Only View' : 'Member'}
             </div>

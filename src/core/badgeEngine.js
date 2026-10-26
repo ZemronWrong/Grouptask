@@ -21,6 +21,8 @@ import { BADGE_ICONS } from '../assets/icons/badgeIcons.js';
 import { STORES, getAll, put, addToSyncQueue } from '../services/indexedDBService.js';
 import { generateId } from '../utils/helpers.js';
 import { calculateStreak } from './gamificationEngine.js';
+import { calculateContributionScore } from './scoringEngine.js';
+import { calculateTotalReputation } from './eventEngine.js';
 
 // ── Profile Badge Definitions ─────────────────────────────────────────────────
 
@@ -122,12 +124,12 @@ export const BOARD_BADGES = [
     icon: BADGE_ICONS.documentation_hero,
     category: 'Board',
     description: 'Completed 2 or more high-weight tasks with proof links',
-    howToGet: 'Complete 2 or more high-weight tasks (weight ≥ 7) with approved proof submission links.',
+    howToGet: 'Complete 2 or more high-weight tasks (weight ≥ 150) with approved proof submission links.',
     checkFn: ({ tasks, memberId, proofs }) => {
       const withProof = tasks.filter((t) =>
         t.assignedTo === memberId &&
         t.status === 'done' &&
-        (t.weight || 0) >= 7 &&
+        (t.weight || 0) >= 150 &&
         proofs.some((p) => p.taskId === t.id && p.status === 'approved' && p.link)
       );
       return withProof.length >= 2;
@@ -337,6 +339,7 @@ export async function awardEligibleBadgesForUser(userId) {
         .map((b) => b.type || b.id)
     );
 
+    const userReputation = await calculateTotalReputation(userId);
     const newlyAwarded = [];
 
     // 1. Evaluate board badges across all boards where user is a member
@@ -348,15 +351,22 @@ export async function awardEligibleBadgesForUser(userId) {
         ? mReviews.reduce((sum, r) => sum + r.score, 0) / mReviews.length
         : 3.0;
 
+      // B6: Use member's real contribution score and review count
+      const contributionScore = calculateContributionScore(groupTasks, mm.id).score;
+      const reviewCount = groupProofs.filter(
+        (p) => (p.reviewedBy === mm.id || p.reviewedByUid === userId) &&
+               (p.status === 'approved' || p.status === 'rejected')
+      ).length;
+
       const boardBadges = evaluateBoardBadges({
         memberId: mm.id,
-        reputation: 10,
+        reputation: userReputation,
         tasks: groupTasks,
         proofs: groupProofs,
-        contributionScore: 100,
+        contributionScore,
         avgPeerScore: avgScore,
         completedCount: groupTasks.filter((t) => t.assignedTo === mm.id && t.status === 'done').length,
-        reviewCount: 0,
+        reviewCount,
         existingBadgeIds: [...earnedBadgeTypes]
       });
 

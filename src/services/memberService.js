@@ -150,6 +150,7 @@ export async function joinGroupByCode({ inviteCode, uid, displayName }) {
     id: memberId,
     uid,
     groupId: group.id,
+    inviteCode: group.inviteCode,
     displayName,
     role: 'member',
     joinedAt: Date.now(),

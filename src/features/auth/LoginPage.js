@@ -1,4 +1,5 @@
 import { signIn, signInWithGoogle } from '../../services/authService.js';
+import { bootstrapUserData } from '../../services/memberService.js';
 import { navigate } from '../../services/router.js';
 import { ICONS } from '../../assets/icons/icons.js';
 
@@ -26,7 +27,7 @@ export function renderLogin() {
             <input id="login-password" type="password" autocomplete="current-password" required minlength="6" />
           </div>
           <p class="auth-error" id="login-error"></p>
-          <button class="btn btn-primary" type="submit">Sign in</button>
+          <button class="btn btn-primary" id="btn-login-submit" type="submit">Sign in</button>
         </form>
         <div class="auth-divider"><span>or</span></div>
         <button class="btn btn-google" type="button" id="btn-google">
@@ -39,28 +40,44 @@ export function renderLogin() {
 
   document.getElementById('tab-register').addEventListener('click', () => navigate('#/register'));
 
+  const submitBtn = document.getElementById('btn-login-submit');
+  const googleBtn = document.getElementById('btn-google');
+
   document.getElementById('login-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const errorEl = document.getElementById('login-error');
     errorEl.textContent = '';
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Signing in...';
     try {
-      await signIn(
+      const user = await signIn(
         document.getElementById('login-email').value.trim(),
         document.getElementById('login-password').value,
       );
+      if (user?.uid) {
+        submitBtn.textContent = 'Loading your groups...';
+        await bootstrapUserData(user.uid);
+      }
       navigate('#/dashboard');
     } catch (err) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Sign in';
       errorEl.textContent = err.message || 'Sign in failed.';
     }
   });
 
-  document.getElementById('btn-google').addEventListener('click', async () => {
+  googleBtn.addEventListener('click', async () => {
     const errorEl = document.getElementById('login-error');
     errorEl.textContent = '';
+    googleBtn.disabled = true;
     try {
-      await signInWithGoogle();
+      const user = await signInWithGoogle();
+      if (user?.uid) {
+        await bootstrapUserData(user.uid);
+      }
       navigate('#/dashboard');
     } catch (err) {
+      googleBtn.disabled = false;
       errorEl.textContent = err.message || 'Google sign-in failed.';
     }
   });

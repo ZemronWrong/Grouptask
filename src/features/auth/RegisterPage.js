@@ -1,4 +1,5 @@
 import { signUp, signInWithGoogle } from '../../services/authService.js';
+import { bootstrapUserData } from '../../services/memberService.js';
 import { navigate } from '../../services/router.js';
 import { ICONS } from '../../assets/icons/icons.js';
 
@@ -30,7 +31,7 @@ export function renderRegister() {
             <input id="reg-password" type="password" autocomplete="new-password" required minlength="6" />
           </div>
           <p class="auth-error" id="register-error"></p>
-          <button class="btn btn-primary" type="submit">Create account</button>
+          <button class="btn btn-primary" id="btn-reg-submit" type="submit">Create account</button>
         </form>
         <div class="auth-divider"><span>or</span></div>
         <button class="btn btn-google" type="button" id="btn-google">
@@ -43,29 +44,45 @@ export function renderRegister() {
 
   document.getElementById('tab-login').addEventListener('click', () => navigate('#/login'));
 
+  const submitBtn = document.getElementById('btn-reg-submit');
+  const googleBtn = document.getElementById('btn-google');
+
   document.getElementById('register-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const errorEl = document.getElementById('register-error');
     errorEl.textContent = '';
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Creating account...';
     try {
-      await signUp(
+      const user = await signUp(
         document.getElementById('reg-email').value.trim(),
         document.getElementById('reg-password').value,
         document.getElementById('reg-name').value.trim(),
       );
+      if (user?.uid) {
+        submitBtn.textContent = 'Setting up workspace...';
+        await bootstrapUserData(user.uid);
+      }
       navigate('#/dashboard');
     } catch (err) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Create account';
       errorEl.textContent = err.message || 'Registration failed.';
     }
   });
 
-  document.getElementById('btn-google').addEventListener('click', async () => {
+  googleBtn.addEventListener('click', async () => {
     const errorEl = document.getElementById('register-error');
     errorEl.textContent = '';
+    googleBtn.disabled = true;
     try {
-      await signInWithGoogle();
+      const user = await signInWithGoogle();
+      if (user?.uid) {
+        await bootstrapUserData(user.uid);
+      }
       navigate('#/dashboard');
     } catch (err) {
+      googleBtn.disabled = false;
       errorEl.textContent = err.message || 'Google sign-in failed.';
     }
   });
