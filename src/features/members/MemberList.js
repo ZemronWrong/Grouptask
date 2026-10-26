@@ -115,6 +115,8 @@ function memberCardHTML(data, isAdmin, isOwner, me, groupId) {
           <span class="member-stat-val" style="${overdue > 0 ? 'color:var(--danger);' : ''}">${overdue}</span>
           <span class="member-stat-label">Overdue</span>
         </div>
+      </div>
+
       <div style="margin-top:14px; border-top:1px solid var(--border); padding-top:10px;">
         <a href="#/profile/${member.uid || member.id}" class="btn btn-secondary btn-sm" style="display:flex; align-items:center; justify-content:center; gap:6px; text-decoration:none; width:100%; font-size:0.8rem; font-family:var(--font-heading);">
           <span>🏅</span> View Achievements & Profile
