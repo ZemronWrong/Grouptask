@@ -92,7 +92,8 @@ service cloud.firestore {
 
     // ── Tasks ────────────────────────────────────────────────────────
     // Read:   any group member.
-    // Create: any group member (createdBy is recorded for audit).
+    // Create: any group member, but initial status must not be 'done' —
+    //         tasks must go through the approval workflow.
     // Update: assignee can move their own card to todo/in-progress/pending-approval.
     //         Only owner/co-admin can set status='done' or change task weight.
     // Delete: only group admin.
@@ -103,7 +104,8 @@ service cloud.firestore {
       allow read: if isAuthed() &&
         isMemberOfGroup(resource.data.groupId);
 
-      allow create: if isWritingToOwnGroup();
+      allow create: if isWritingToOwnGroup() &&
+        request.resource.data.status != 'done';
 
       allow update: if isAuthed() && isMemberOfGroup(resource.data.groupId) && (
         // Admins can do anything

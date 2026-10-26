@@ -11,7 +11,7 @@
  * HTML templates live in TaskCard.js and TaskModal.js.
  */
 
-import { STORES, getAllByIndex, put, addToSyncQueue, get, getAll } from '../../services/indexedDBService.js';
+import { STORES, getAllByIndex, get, getAll } from '../../services/indexedDBService.js';
 import { escapeHtml } from '../../utils/helpers.js';
 import { initDragDrop } from './dragDrop.js';
 import { currentUser } from '../../services/authService.js';
@@ -59,30 +59,6 @@ export function resetBoardState() {
   Object.keys(_boardContext).forEach((k) => delete _boardContext[k]);
 }
 
-// ── Auto-approval ─────────────────────────────────────────────────────────────
-
-async function checkAutoApprovals(tasks, groupId) {
-  const AUTO_APPROVE_MS = 72 * 60 * 60 * 1000;
-  const now = Date.now();
-  for (const t of tasks) {
-    if (t.status === 'pending-approval' && t.updatedAt && now - t.updatedAt > AUTO_APPROVE_MS) {
-      t.status = 'done';
-      t.completedAt = now;
-      t.updatedAt   = now;
-      await put(STORES.TASKS, t);
-      await addToSyncQueue({ collection: 'tasks', docId: t.id, operation: 'update', data: t });
-
-      const proofs = await getAllByIndex(STORES.PROOF_SUBMISSIONS, 'taskId', t.id);
-      const pending = proofs.find((p) => p.status === 'pending');
-      if (pending) {
-        pending.status = 'approved';
-        pending.note   = 'Auto-approved after 72 hours';
-        await put(STORES.PROOF_SUBMISSIONS, pending);
-        await addToSyncQueue({ collection: 'proofSubmissions', docId: pending.id, operation: 'update', data: pending });
-      }
-    }
-  }
-}
 
 // ── Main render ───────────────────────────────────────────────────────────────
 
@@ -107,8 +83,6 @@ export async function renderTaskBoard(groupId) {
   // Build a uid → profile lookup for avatar images
   const profileMap = {};
   (allProfiles || []).forEach(p => { profileMap[p.uid] = p; });
-
-  await checkAutoApprovals(tasks, groupId);
 
   const pendingProofsCount = groupProofs.filter((p) => p.status === 'pending').length;
   const STATUSES = getStatuses();
