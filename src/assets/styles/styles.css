@@ -1275,7 +1275,7 @@ textarea { resize: vertical; }
 .podium-points { font-family: var(--font-heading); color: var(--accent); font-weight: bold; font-size: 1rem; }
 
 .leaderboard-table { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; }
-.lb-row { display: grid; grid-template-columns: 50px 1.5fr 0.8fr 0.8fr 0.8fr 1fr; align-items: center; padding: 14px 20px; border-bottom: 1px solid var(--border); transition: background var(--transition); }
+.lb-row { display: grid; grid-template-columns: 50px 1.5fr 1fr 1fr; align-items: center; padding: 14px 20px; border-bottom: 1px solid var(--border); transition: background var(--transition); }
 .lb-row:not(.lb-header):hover { background: var(--primary-soft); }
 .lb-header { background: var(--bg-surface); font-family: var(--font-heading); font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; font-weight: 600; }
 .lb-rank { font-weight: 700; color: var(--accent); font-size: 1rem; }
@@ -1324,7 +1324,7 @@ textarea { resize: vertical; }
   .dashboard-layout { grid-template-columns: 1fr; }
   .sidebar { display: none; }
   .kanban-board { grid-template-columns: 1fr; }
-  .lb-row { grid-template-columns: 40px 1fr 0.6fr 0.6fr 0.6fr 0.8fr; font-size: 0.8rem; padding: 10px 12px; }
+  .lb-row { grid-template-columns: 40px 1.2fr 0.8fr 1fr; font-size: 0.8rem; padding: 10px 12px; }
   .settings-page { padding: 12px; }
   .profile-hero { flex-direction: column; text-align: center; }
   .profile-stats-grid { grid-template-columns: repeat(2, 1fr); }

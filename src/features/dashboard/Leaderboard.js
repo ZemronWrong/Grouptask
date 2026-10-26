@@ -20,47 +20,47 @@ export async function renderLeaderboard(groupId) {
   const allPR = await getAll(STORES.PEER_REVIEWS);
   const peerReviews = allPR.filter(pr => pr.groupId === groupId);
 
-  // Compute WPS and PE scores for all members using Chapter 3 formulation
+  const user = currentUser();
+  const me = members.find(m => m.uid === user?.uid);
+
+  // Compute WPS and PE scores ONLY for the signed-in member's private card (UREB A2)
   const memberIds = members.map(m => m.id);
   const n = members.length;
   const csMap = calculateAllContributionScores(tasks, memberIds);
-  const ratingsMap = {};
-  for (const m of members) {
-    ratingsMap[m.id] = peerReviews
-      .filter(pr => pr.evaluateeId === m.id || pr.evaluateeId === m.uid || pr.evaluateeUid === m.uid)
-      .map(pr => ({ rating: pr.score }));
-  }
-  const peMap = calculateAllPEScores(csMap, ratingsMap, n);
 
-  // Compute Board Points & Peer Points concurrently for all members
+  let myWps = 0;
+  let myPeScore = 0;
+  let myRatingCount = 0;
+  let myAvgScore = 0;
+
+  if (me) {
+    const myReviews = peerReviews.filter(pr =>
+      pr.evaluateeId === me.id || pr.evaluateeId === me.uid || pr.evaluateeUid === me.uid
+    );
+    myRatingCount = myReviews.length;
+    myAvgScore = myRatingCount > 0 ? (myReviews.reduce((sum, pr) => sum + pr.score, 0) / myRatingCount) : 0;
+    myWps = csMap[me.id]?.score ?? 0;
+
+    // Under Chapter 3 PE formulation: requires at least 2 ratings for peer component
+    const myRatingsMap = { [me.id]: myReviews.map(pr => ({ rating: pr.score })) };
+    const myPeMap = calculateAllPEScores(csMap, myRatingsMap, n);
+    const myPeData = myPeMap[me.id] ?? { peScore: 0, ratingsStatus: 'task_based_only' };
+    myPeScore = myPeData.peScore;
+  }
+
+  // Compute Board Points for all members — leaderboard ranks by Board Points only (UREB A2)
   const memberPoints = await Promise.all(
     members.map(async m => {
       const bp = await calculateBoardPoints(groupId, m.uid);
-      const mReviews = peerReviews.filter(pr => pr.evaluateeId === m.id || pr.evaluateeId === m.uid || pr.evaluateeUid === m.uid);
-      const avgScore = mReviews.length > 0 
-        ? mReviews.reduce((sum, pr) => sum + pr.score, 0) / mReviews.length 
-        : 0;
-      const pe = peMap[m.id] ?? { peScore: 0, ratingsStatus: 'task_based_only', ratingCount: 0, ciComponent: 0 };
-      
-      // Peer Adjustment Points: Each star gives 20 peer bonus points (up to 100 points for 5.0 stars)
-      const peerPoints = mReviews.length > 0 ? Math.round(avgScore * 20) : 0;
-      const totalPoints = bp + peerPoints;
-
       return {
         ...m,
         boardPoints: bp,
-        peerPoints,
-        totalPoints,
-        avgScore,
-        reviewCount: mReviews.length,
         badges: badges.filter(b => b.memberId === m.id || b.uid === m.uid),
-        wps: csMap[m.id]?.score ?? 0,
-        pe,
       };
     })
   );
 
-  const leaderboardData = memberPoints.sort((a, b) => b.totalPoints - a.totalPoints);
+  const leaderboardData = memberPoints.sort((a, b) => b.boardPoints - a.boardPoints);
   const top3 = leaderboardData.slice(0, 3);
   const rest = leaderboardData.slice(3);
   const rewardLabel = getTerm('rewardLabel');
@@ -76,6 +76,36 @@ export async function renderLeaderboard(groupId) {
         </header>
 
         <div class="leaderboard-container">
+          ${!group?.scoresHidden && me ? `
+            <div class="your-scores-card" style="background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:20px; margin-bottom:28px;">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                <h3 style="margin:0; font-size:1.05rem; color:var(--text); display:flex; align-items:center; gap:8px;">
+                  <span>👤</span> Your Private Scores
+                </h3>
+                <span style="font-size:0.75rem; color:var(--text-muted); background:var(--bg); border:1px solid var(--border); padding:3px 8px; border-radius:12px;">Only visible to you</span>
+              </div>
+              <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:16px;">
+                <div style="background:var(--bg); padding:12px 16px; border-radius:8px; border:1px solid var(--border);">
+                  <div style="font-size:0.75rem; color:var(--text-muted); margin-bottom:4px;">Contribution Share (WPS)</div>
+                  <div style="font-size:1.25rem; font-weight:700; color:var(--primary);">${myWps.toFixed(1)}%</div>
+                </div>
+                <div style="background:var(--bg); padding:12px 16px; border-radius:8px; border:1px solid var(--border);">
+                  <div style="font-size:0.75rem; color:var(--text-muted); margin-bottom:4px;">Peer Evaluation (PE) Score</div>
+                  <div style="font-size:1.25rem; font-weight:700; color:var(--accent);">${myPeScore.toFixed(1)} / 100</div>
+                  <div style="font-size:0.7rem; color:var(--text-muted); margin-top:2px;">
+                    ${myRatingCount >= 2 ? `${myRatingCount} peer ratings applied` : 'Task-based only, waiting for ratings'}
+                  </div>
+                </div>
+                <div style="background:var(--bg); padding:12px 16px; border-radius:8px; border:1px solid var(--border);">
+                  <div style="font-size:0.75rem; color:var(--text-muted); margin-bottom:4px;">Average Peer Rating</div>
+                  <div style="font-size:1.25rem; font-weight:700; color:var(--text);">
+                    ${myRatingCount >= 2 ? `${myAvgScore.toFixed(1)} / 5.0 ⭐` : '<span style="font-size:0.85rem; font-weight:normal; color:var(--text-muted);">Waiting for ≥ 2 ratings</span>'}
+                  </div>
+                </div>
+              </div>
+            </div>
+          ` : ''}
+
           <div class="podium">
             ${top3.map((m, i) => `
               <div class="podium-card podium-${i+1}">
@@ -85,10 +115,7 @@ export async function renderLeaderboard(groupId) {
                 <div class="avatar avatar-lg">${escapeHtml(m.displayName?.[0] || '?')}</div>
                 <div style="text-align:center;">
                   <div class="podium-name">${escapeHtml(m.displayName)}</div>
-                  <div class="podium-points">${m.totalPoints} <span style="font-size:0.7rem;">PTS</span></div>
-                  <div class="podium-level" style="font-size:0.75rem; color:var(--text-muted); margin-top:2px;">
-                    ${m.boardPoints} Task + ${m.peerPoints} Peer
-                  </div>
+                  <div class="podium-points">${m.boardPoints} <span style="font-size:0.7rem;">BP</span></div>
                 </div>
               </div>
             `).join('')}
@@ -98,10 +125,7 @@ export async function renderLeaderboard(groupId) {
             <div class="lb-row lb-header">
               <div>Rank</div>
               <div>Member</div>
-              <div>Total Points</div>
-              <div>Task BP</div>
-              <div>PE Score</div>
-              <div>Peer Avg</div>
+              <div>Board Points</div>
               <div>Board Badges</div>
             </div>
             ${rest.map((m, i) => `
@@ -111,19 +135,7 @@ export async function renderLeaderboard(groupId) {
                   <span style="font-family:var(--font-heading); font-weight:600; color:var(--text);">${escapeHtml(m.displayName)}</span>
                 </div>
                 <div style="font-family:var(--font-heading); font-weight:bold; color:var(--primary); font-size:1.05rem;">
-                  ${m.totalPoints}
-                </div>
-                <div style="font-family:var(--font-heading); font-weight:600; color:var(--accent);">
                   ${m.boardPoints} BP
-                </div>
-                <div style="font-family:var(--font-heading); font-weight:700; color:var(--text);">
-                  ${m.pe.peScore.toFixed(1)}/100
-                  <div style="font-size:0.65rem; color:var(--text-muted); font-family:var(--font-body); font-weight:400;">
-                    ${m.pe.ratingsStatus === 'has_ratings' ? `${m.pe.ratingCount} peer ratings` : 'Task-based only'}
-                  </div>
-                </div>
-                <div style="color:var(--text-secondary); font-weight:600;">
-                  ${m.avgScore > 0 ? `${m.avgScore.toFixed(1)} / 5.0 ⭐` : '<span style="opacity:0.5;">Pending</span>'}
                 </div>
                 <div style="display:flex; gap:4px; flex-wrap:wrap;">
                   ${m.badges.map(b => {
@@ -139,25 +151,11 @@ export async function renderLeaderboard(groupId) {
             ${rest.length === 0 ? `<div style="padding: 24px; text-align:center; color:var(--text-muted); font-family:var(--font-heading);">No other members to display.</div>` : ''}
           </div>
 
-          <div class="leaderboard-charts" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 24px; margin-top: 40px;">
-            <div style="background: var(--bg-card); border-radius: 16px; padding: 24px; box-shadow: var(--shadow-md); border: 1px solid var(--border); display: flex; flex-direction: column; align-items: center;">
-              <h3 style="font-family: var(--font-heading); margin-bottom: 24px; color: var(--text); font-size: 1.1rem; letter-spacing: 0.5px;">Contribution Share</h3>
-              <div style="position: relative; width: 100%; max-width: 250px; aspect-ratio: 1;">
-                <canvas id="pieChart"></canvas>
-              </div>
-            </div>
-            
+          <div class="leaderboard-charts" style="margin-top: 40px;">
             <div style="background: var(--bg-card); border-radius: 16px; padding: 24px; box-shadow: var(--shadow-md); border: 1px solid var(--border); display: flex; flex-direction: column;">
-              <h3 style="font-family: var(--font-heading); margin-bottom: 16px; color: var(--text); font-size: 1.1rem; letter-spacing: 0.5px;">Points Comparison</h3>
+              <h3 style="font-family: var(--font-heading); margin-bottom: 16px; color: var(--text); font-size: 1.1rem; letter-spacing: 0.5px;">Board Points Comparison</h3>
               <div style="flex-grow: 1; min-height: 250px; position: relative;">
                 <canvas id="pointsChart"></canvas>
-              </div>
-            </div>
-
-            <div style="background: var(--bg-card); border-radius: 16px; padding: 24px; box-shadow: var(--shadow-md); border: 1px solid var(--border); display: flex; flex-direction: column; align-items: center;">
-              <h3 style="font-family: var(--font-heading); margin-bottom: 16px; color: var(--text); font-size: 1.1rem; letter-spacing: 0.5px;">Performance Radar</h3>
-              <div style="position: relative; width: 100%; max-width: 280px; aspect-ratio: 1;">
-                <canvas id="radarChart"></canvas>
               </div>
             </div>
           </div>
@@ -168,23 +166,15 @@ export async function renderLeaderboard(groupId) {
 
   bindSidebarEvents(groupId);
 
-  // Initialize Charts
+  // Initialize Bar Chart for Board Points
   setTimeout(() => {
     const pointsCtx = document.getElementById('pointsChart');
-    const radarCtx = document.getElementById('radarChart');
-    const pieCtx = document.getElementById('pieChart');
-    
-    if (pointsCtx && radarCtx && pieCtx) {
+    if (pointsCtx) {
       const labels = leaderboardData.map(m => m.displayName || 'Unknown');
-      const totalPoints = leaderboardData.map(m => m.totalPoints);
       const taskPoints = leaderboardData.map(m => m.boardPoints);
-      const peerPoints = leaderboardData.map(m => m.peerPoints);
 
-      // Theme Colors & Fonts
       const style = getComputedStyle(document.body);
       const primaryColor = style.getPropertyValue('--primary').trim() || '#4F46E5';
-      const secondaryColor = style.getPropertyValue('--accent').trim() || '#10B981';
-      const dangerColor = style.getPropertyValue('--danger').trim() || '#EF4444';
       const textColor = style.getPropertyValue('--text').trim() || '#1f2937';
       const textSecondary = style.getPropertyValue('--text-secondary').trim() || '#6b7280';
       const borderColor = style.getPropertyValue('--border').trim() || '#e5e7eb';
@@ -197,123 +187,22 @@ export async function renderLeaderboard(groupId) {
         type: 'bar',
         data: {
           labels,
-          datasets: [
-            {
-              label: 'Total Points',
-              data: totalPoints,
-              backgroundColor: primaryColor,
-              borderRadius: 4
-            },
-            {
-              label: 'Task BP',
-              data: taskPoints,
-              backgroundColor: secondaryColor,
-              borderRadius: 4
-            },
-            {
-              label: 'Peer Points',
-              data: peerPoints,
-              backgroundColor: '#F59E0B',
-              borderRadius: 4
-            }
-          ]
-        },
-        options: {
-          responsive: true,
-          plugins: {
-            legend: { position: 'top', labels: { color: textColor } }
-          },
-          scales: {
-            y: { beginAtZero: true, grid: { color: borderColor }, ticks: { color: textSecondary } },
-            x: { grid: { display: false }, ticks: { color: textSecondary } }
-          }
-        }
-      });
-
-      new Chart(radarCtx, {
-        type: 'radar',
-        data: {
-          labels,
-          datasets: [
-            {
-              label: 'Peer Quality (0-100)',
-              data: leaderboardData.map(m => Math.round(m.avgScore * 20)),
-              backgroundColor: 'rgba(239, 68, 68, 0.2)',
-              borderColor: dangerColor,
-              pointBackgroundColor: dangerColor,
-              pointHoverBackgroundColor: '#fff',
-              pointHoverBorderColor: dangerColor
-            },
-            {
-              label: 'WPS Share (%)',
-              data: leaderboardData.map(m => Math.round(m.wps)),
-              backgroundColor: 'rgba(16, 185, 129, 0.2)',
-              borderColor: secondaryColor,
-              pointBackgroundColor: secondaryColor,
-              pointHoverBackgroundColor: '#fff',
-              pointHoverBorderColor: secondaryColor
-            }
-          ]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: {
-            legend: { position: 'bottom', labels: { color: textColor, font: { size: 11 } } }
-          },
-          scales: {
-            r: {
-              angleLines: { color: borderColor },
-              grid: { color: borderColor },
-              pointLabels: { color: textColor, font: { size: 10 } },
-              ticks: { display: false, backdropColor: 'transparent' }
-            }
-          }
-        }
-      });
-
-      // Distinct colors for the pie chart
-      const pieColors = [
-        primaryColor, 
-        secondaryColor, 
-        '#F59E0B', '#3B82F6', '#8B5CF6', '#EC4899', '#14B8A6'
-      ];
-
-      new Chart(pieCtx, {
-        type: 'doughnut',
-        data: {
-          labels,
           datasets: [{
-            data: leaderboardData.map(m => Math.max(1, m.totalPoints)), // base contribution on total points (task + peer)
-            backgroundColor: pieColors.slice(0, labels.length),
-            borderWidth: 2,
-            borderColor: getComputedStyle(document.body).getPropertyValue('--bg-card').trim() || '#fff'
+            label: 'Board Points (BP)',
+            data: taskPoints,
+            backgroundColor: primaryColor,
+            borderRadius: 6
           }]
         },
         options: {
           responsive: true,
           maintainAspectRatio: false,
-          cutout: '65%',
           plugins: {
-            legend: { 
-              position: 'bottom', 
-              labels: { 
-                color: textColor, 
-                padding: 15,
-                usePointStyle: true,
-                font: { size: 11 }
-              } 
-            },
-            tooltip: {
-              callbacks: {
-                label: function(context) {
-                  let value = context.raw || 0;
-                  let total = context.chart._metasets[context.datasetIndex].total;
-                  let percentage = total > 0 ? Math.round((value / total) * 100) + '%' : '0%';
-                  return ` ${value} pts (${percentage})`;
-                }
-              }
-            }
+            legend: { display: false }
+          },
+          scales: {
+            y: { beginAtZero: true, grid: { color: borderColor }, ticks: { color: textSecondary } },
+            x: { grid: { display: false }, ticks: { color: textSecondary } }
           }
         }
       });
