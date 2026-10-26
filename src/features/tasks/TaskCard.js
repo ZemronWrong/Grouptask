@@ -57,7 +57,7 @@ export function taskCardHTML(task, members, proofs, comments, viewIsAdmin, me, p
           <span class="task-assignee-label">Assigned</span>
           <span class="task-assignee-name">${escapeHtml(assignee.displayName || assignee.uid)}</span>
         </div>
-      </a>\`;
+      </a>`;
   } else {
     assigneeAvatarHTML = `<span class="task-assignee-label" style="margin:0; opacity:0.6;">Unassigned</span>`;
   }
