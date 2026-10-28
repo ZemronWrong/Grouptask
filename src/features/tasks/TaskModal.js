@@ -353,7 +353,7 @@ export function openTaskModal(task = null, defaultStatus = 'todo') {
 }
 
 /** Render and open the full task detail modal (with comments). */
-export async function openTaskDetailModal(task, groupId, members, viewIsAdmin) {
+export async function openTaskDetailModal(task, groupId, members, viewIsAdmin, me) {
   const container = document.getElementById('task-detail-modal-container');
   const assignee = members.find((m) => m.id === task.assignedTo);
 
@@ -387,6 +387,12 @@ export async function openTaskDetailModal(task, groupId, members, viewIsAdmin) {
             <button id="btn-delete-task-modal" data-task-id="${task.id}" class="btn" style="background:rgba(220,38,38,0.12); color:#f87171; border:1px solid rgba(220,38,38,0.3); border-radius:var(--radius);">
               🗑 Delete Task
             </button>
+            <button id="btn-edit-task-modal" data-task-id="${task.id}" class="btn btn-primary">
+              ✏️ Edit Task
+            </button>
+          </div>
+        ` : (me && task.assignedTo && (task.assignedTo === me.id || task.assignedTo === me.uid)) ? `
+          <div class="modal-footer" style="border-top:1px solid var(--border); display:flex; justify-content:flex-end; align-items:center; padding:16px;">
             <button id="btn-edit-task-modal" data-task-id="${task.id}" class="btn btn-primary">
               ✏️ Edit Task
             </button>

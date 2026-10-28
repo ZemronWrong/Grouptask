@@ -270,7 +270,7 @@ export function bindBoardEvents(boardContext, rerenderBoard) {
     const card = e.target.closest('.task-card');
     if (card && !e.target.closest('button') && !e.target.closest('a')) {
       const task = await get(STORES.TASKS, card.dataset.taskId);
-      if (task) await openTaskDetailModal(task, groupId, members, viewIsAdmin);
+      if (task) await openTaskDetailModal(task, groupId, members, viewIsAdmin, me);
       return;
     }
   });
