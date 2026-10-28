@@ -129,34 +129,52 @@ export async function renderTaskBoard(groupId) {
           </div>
         </header>
 
-        <div class="kanban-board" id="kanban-board">
-          ${STATUSES.map((s) => `
-            <div class="kanban-column" data-status="${s.key}">
-              <div class="column-header">
-                <span class="column-icon">${s.icon}</span>
-                <span class="column-title">${s.label}</span>
-                <span class="column-count">${tasks.filter((t) => t.status === s.key).length}</span>
+        <div class="kanban-wrapper">
+          <div class="kanban-board" id="kanban-board">
+            ${STATUSES.filter(s => s.key !== 'done').map((s) => `
+              <div class="kanban-column" data-status="${s.key}">
+                <div class="column-header">
+                  <span class="column-icon">${s.icon}</span>
+                  <span class="column-title">${s.label}</span>
+                  <span class="column-count">${tasks.filter((t) => t.status === s.key).length}</span>
+                </div>
+                <div class="column-cards">
+                  ${tasks
+                    .filter((t) => t.status === s.key)
+                    .sort((a, b) => (b.weight || 0) - (a.weight || 0))
+                    .map((t) => taskCardHTML(t, members, groupProofs, comments, isAdmin, me, profileMap))
+                    .join('')}
+                </div>
+                ${isAdmin && s.key === 'todo' ? `
+                  <button class="btn btn-secondary btn-block btn-add-task-col" data-status="${s.key}"
+                    style="margin-top:16px; background:transparent; border-style:dashed; color:var(--text-muted);">
+                    ${getTerm('addQuest')}
+                  </button>
+                ` : ''}
               </div>
-              <div class="column-cards">
-                ${tasks
-                  .filter((t) => t.status === s.key)
-                  .sort((a, b) => (b.weight || 0) - (a.weight || 0))
-                  .map((t) => taskCardHTML(t, members, groupProofs, comments, isAdmin, me, profileMap))
-                  .join('')}
-              </div>
-              ${isAdmin && s.key === 'todo' ? `
-                <button class="btn btn-secondary btn-block btn-add-task-col" data-status="${s.key}"
-                  style="margin-top:16px; background:transparent; border-style:dashed; color:var(--text-muted);">
-                  ${getTerm('addQuest')}
-                </button>
-              ` : ''}
+            `).join('')}
+          </div>
+
+          <!-- Completed side panel -->
+          <aside class="completed-panel" id="completed-panel">
+            <div class="column-header" style="margin-bottom:12px;">
+              <span class="column-icon">${STATUSES.find(s => s.key === 'done')?.icon || ''}</span>
+              <span class="column-title">Completed</span>
+              <span class="column-count">${tasks.filter(t => t.status === 'done').length}</span>
             </div>
-          `).join('')}
+            <div class="column-cards" id="completed-cards">
+              ${tasks
+                .filter(t => t.status === 'done')
+                .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
+                .map(t => taskCardHTML(t, members, groupProofs, comments, isAdmin, me, profileMap))
+                .join('') || `<div style="padding:24px 12px; text-align:center; color:var(--text-muted); font-size:0.85rem;"><div style="font-size:2rem; margin-bottom:8px;">🏆</div>Completed tasks will appear here.</div>`}
+            </div>
+          </aside>
         </div>
       </div>
     </div>
 
-    ${taskModalHTML(members, STATUSES)}
+    ${taskModalHTML(members, STATUSES, isAdmin)}
     ${shareModalHTML(members, group, profileMap)}
     ${boardMembersModalHTML(members, profileMap)}
     ${proofReviewModalHTML()}

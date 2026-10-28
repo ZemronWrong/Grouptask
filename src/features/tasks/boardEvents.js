@@ -196,6 +196,27 @@ export function bindBoardEvents(boardContext, rerenderBoard) {
       await rerenderBoard(groupId);
       return;
     }
+    // Move own task from todo → in-progress
+    const moveToProgressBtn = e.target.closest('.btn-move-to-progress');
+    if (moveToProgressBtn) {
+      e.stopPropagation();
+      const task = await get(STORES.TASKS, moveToProgressBtn.dataset.taskId);
+      if (!task) return;
+      task.status = 'in-progress';
+      task.updatedAt = Date.now();
+      await put(STORES.TASKS, task);
+      await addToSyncQueue({ collection: 'tasks', docId: task.id, operation: 'update', data: task });
+      await logActivity({
+        groupId, type: 'task_moved',
+        actorId: me?.id || null,
+        actorName: me?.displayName || 'Someone',
+        description: `${me?.displayName || 'Someone'} moved "${task.title}" to In Progress`,
+        meta: { taskId: task.id, taskTitle: task.title },
+      });
+      showToast('Moved to In Progress!');
+      await rerenderBoard(groupId);
+      return;
+    }
 
     // Open proof-submit modal
     const submitProofBtn = e.target.closest('.btn-submit-proof');
@@ -273,6 +294,29 @@ export function bindBoardEvents(boardContext, rerenderBoard) {
       if (task) await openTaskDetailModal(task, groupId, members, viewIsAdmin, me);
       return;
     }
+  });
+
+  // ─── "Proceed without link" in proof submit modal ───
+  document.addEventListener('click', async (e) => {
+    if (!e.target.closest('#btn-submit-no-link')) return;
+    const { groupId, members, me } = boardContext;
+    const taskId = document.getElementById('submit-task-id').value;
+    if (!taskId) return;
+    const task = await get(STORES.TASKS, taskId);
+    if (!task) return;
+    task.status    = 'pending-approval';
+    task.updatedAt = Date.now();
+    await put(STORES.TASKS, task);
+    await addToSyncQueue({ collection: 'tasks', docId: taskId, operation: 'update', data: task });
+    const admins = members.filter((m) => m.role === 'owner' || m.role === 'co-admin');
+    for (const a of admins) {
+      await notify({ uid: a.uid, type: 'approval_request', title: 'Approval Requested',
+        message: `${me?.displayName} is requesting approval for "${task.title}"`,
+        icon: '⏳', actionLink: `#/group/${groupId}`, groupId });
+    }
+    document.getElementById('proof-submit-modal').hidden = true;
+    showToast('Submitted for approval!');
+    await rerenderBoard(groupId);
   });
 
   // ─── Form submits ───
@@ -366,20 +410,30 @@ export function bindBoardEvents(boardContext, rerenderBoard) {
 /** Reads the task modal form and saves to IndexedDB + sync queue. */
 export async function saveTask(groupId, members) {
   const id    = document.getElementById('task-id').value || generateId();
+  const isAdminEdit = document.getElementById('task-is-admin')?.value !== '0';
   const isNew = !document.getElementById('task-id').value;
-  const assignedTo = document.getElementById('task-assignee-input').value || null;
-  const status     = document.getElementById('task-status-input').value || 'todo';
+  const assignedToRaw = document.getElementById('task-assignee-input').value || null;
+  const statusRaw     = document.getElementById('task-status-input').value || 'todo';
   const me = members.find((m) => m.uid === currentUser()?.uid);
+
+  let oldTask = null;
+  if (!isNew) {
+    oldTask = await get(STORES.TASKS, id);
+  }
+
+  // For member (non-admin) edits, preserve all locked fields from the original task
+  const assignedTo = isAdminEdit ? assignedToRaw : (oldTask?.assignedTo ?? assignedToRaw);
+  const status     = isAdminEdit ? statusRaw    : (oldTask?.status ?? statusRaw);
 
   const task = {
     id, groupId,
     title:       document.getElementById('task-title-input').value.trim(),
     description: document.getElementById('task-desc-input').value.trim(),
-    difficulty:  document.getElementById('task-diff-input').value,
-    type:        document.getElementById('task-type-input')?.value || 'task',
-    tags:        [document.getElementById('task-type-input')?.value || 'task'],
-    weight:      Number(document.getElementById('task-weight-input').value) || 100,
-    deadline:    document.getElementById('task-deadline-input').value || null,
+    difficulty:  isAdminEdit ? (document.getElementById('task-diff-input').value) : (oldTask?.difficulty || 'medium'),
+    type:        isAdminEdit ? (document.getElementById('task-type-input')?.value || 'task') : (oldTask?.type || 'task'),
+    tags:        isAdminEdit ? [document.getElementById('task-type-input')?.value || 'task'] : (oldTask?.tags || ['task']),
+    weight:      isAdminEdit ? (Number(document.getElementById('task-weight-input').value) || 100) : (oldTask?.weight || 100),
+    deadline:    isAdminEdit ? (document.getElementById('task-deadline-input').value || null) : (oldTask?.deadline ?? null),
     assignedTo, status,
     updatedAt: Date.now(),
     createdAt:   isNew ? Date.now() : undefined,
@@ -389,9 +443,7 @@ export async function saveTask(groupId, members) {
 
   const STATUS_LABELS = { 'todo': 'To Do', 'in-progress': 'In Progress', 'pending-approval': 'Pending Approval', 'done': 'Completed' };
 
-  let oldTask = null;
   if (!isNew) {
-    oldTask = await get(STORES.TASKS, id);
     task.createdAt   = oldTask?.createdAt || Date.now();
     task.createdBy   = oldTask?.createdBy;
     task.creatorName = oldTask?.creatorName;

@@ -23,7 +23,7 @@ const STATUS_LABELS = {
 
 // ── Static modal HTML templates ───────────────────────────────────────────────
 
-export function taskModalHTML(members, statuses) {
+export function taskModalHTML(members, statuses, isAdmin = true) {
   return `
     <div class="modal-overlay" id="task-modal" hidden>
       <div class="modal">
@@ -34,6 +34,7 @@ export function taskModalHTML(members, statuses) {
         <form id="task-form" class="modal-body">
           <input type="hidden" id="task-id" />
           <input type="hidden" id="task-default-status" />
+          <input type="hidden" id="task-is-admin" value="${isAdmin ? '1' : '0'}" />
           <div class="form-group">
             <label for="task-title-input">${getTerm('task')} Title</label>
             <input type="text" id="task-title-input" required placeholder="..." />
@@ -42,6 +43,7 @@ export function taskModalHTML(members, statuses) {
             <label for="task-desc-input">Description</label>
             <textarea id="task-desc-input" rows="4" placeholder="Enter details..."></textarea>
           </div>
+          ${isAdmin ? `
           <div class="form-row">
             <div class="form-group">
               <label for="task-diff-input">Difficulty</label>
@@ -92,6 +94,18 @@ export function taskModalHTML(members, statuses) {
             </div>
             <input type="hidden" id="task-status-input" value="todo" />
           </div>
+          ` : `
+          <input type="hidden" id="task-diff-input" value="" />
+          <input type="hidden" id="task-type-input" value="" />
+          <input type="hidden" id="task-weight-input" value="" />
+          <input type="hidden" id="task-deadline-input" value="" />
+          <input type="hidden" id="task-assignee-input" value="" />
+          <input type="hidden" id="task-status-input" value="" />
+          <div class="member-edit-notice" style="display:flex; align-items:center; gap:8px; padding:10px 14px; border-radius:var(--radius); background:rgba(99,102,241,0.08); border:1px solid rgba(99,102,241,0.2); font-size:0.82rem; color:var(--text-secondary); margin-bottom:8px;">
+            <span style="font-size:1.1rem;">🔒</span>
+            <span>As an assignee you can only edit the <strong>description</strong>. Contact an admin to change points, difficulty, or type.</span>
+          </div>
+          `}
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary btn-close-modal">Cancel</button>
             <button type="submit" class="btn btn-primary">${getTerm('saveTask')}</button>
@@ -295,20 +309,21 @@ export function proofReviewModalHTML() {
 export function proofSubmitModalHTML() {
   return `
     <div class="modal-overlay" id="proof-submit-modal" hidden>
-      <div class="modal">
+      <div class="modal" style="max-width:460px;">
         <div class="modal-header">
           <h2>Submit for Approval</h2>
           <button class="btn-icon btn-close-modal" aria-label="Close">✕</button>
         </div>
         <form id="proof-submit-form" class="modal-body">
           <input type="hidden" id="submit-task-id" />
+          <p style="font-size:0.85rem; color:var(--text-secondary); margin-bottom:16px;">Attach a link to your work (e.g. a PR, doc, or screenshot URL). You can also skip if no link is needed.</p>
           <div class="form-group">
-            <label for="submit-proof-link">Proof Link (Optional)</label>
-            <input type="url" id="submit-proof-link" placeholder="https://..." />
+            <label for="submit-proof-link">📎 Proof Link</label>
+            <input type="url" id="submit-proof-link" placeholder="https://..." style="width:100%; box-sizing:border-box;" />
           </div>
-          <div class="modal-footer">
-            <button type="button" class="btn btn-secondary btn-close-modal">Cancel</button>
-            <button type="submit" class="btn btn-primary">Submit</button>
+          <div class="modal-footer" style="flex-direction:column; gap:8px; align-items:stretch;">
+            <button type="submit" class="btn btn-primary" style="width:100%;">🚀 Submit with Link</button>
+            <button type="button" class="btn btn-secondary" id="btn-submit-no-link" style="width:100%;">Proceed without a link</button>
           </div>
         </form>
       </div>
@@ -325,25 +340,31 @@ export function openTaskModal(task = null, defaultStatus = 'todo') {
     ? `Edit ${getTerm('task')}`
     : `New ${getTerm('task')}`;
 
-  document.getElementById('task-id').value            = task?.id || '';
-  document.getElementById('task-title-input').value   = task?.title || '';
-  document.getElementById('task-desc-input').value    = task?.description || '';
-  document.getElementById('task-diff-input').value    = task?.difficulty || 'medium';
-  const taskTypeInput = document.getElementById('task-type-input');
-  if (taskTypeInput) {
-    taskTypeInput.value = task?.type || (Array.isArray(task?.tags) && task.tags[0]) || 'task';
-  }
-  document.getElementById('task-weight-input').value  = task?.weight || 100;
-  document.getElementById('task-deadline-input').value = task?.deadline || '';
+  document.getElementById('task-id').value          = task?.id || '';
+  document.getElementById('task-title-input').value = task?.title || '';
+  document.getElementById('task-desc-input').value  = task?.description || '';
+
+  // Safely populate fields that may be hidden (non-admin member edit)
+  const diffEl   = document.getElementById('task-diff-input');
+  const typeEl   = document.getElementById('task-type-input');
+  const weightEl = document.getElementById('task-weight-input');
+  const deadlineEl = document.getElementById('task-deadline-input');
+  const assigneeEl = document.getElementById('task-assignee-input');
+  const statusEl   = document.getElementById('task-status-input');
+
+  if (diffEl)   diffEl.value   = task?.difficulty || 'medium';
+  if (typeEl)   typeEl.value   = task?.type || (Array.isArray(task?.tags) && task.tags[0]) || 'task';
+  if (weightEl) weightEl.value = task?.weight || 100;
+  if (deadlineEl) deadlineEl.value = task?.deadline || '';
 
   const assigned = task?.assignedTo || '';
-  document.getElementById('task-assignee-input').value = assigned;
+  if (assigneeEl) assigneeEl.value = assigned;
   document.querySelectorAll('#assignee-options-container .assignee-option').forEach((o) => {
     o.classList.toggle('selected', o.dataset.uid === assigned);
   });
 
   const status = task?.status || defaultStatus;
-  document.getElementById('task-status-input').value = status;
+  if (statusEl) statusEl.value = status;
   document.querySelectorAll('#status-options-container .assignee-option').forEach((o) => {
     o.classList.toggle('selected', o.dataset.status === status);
   });

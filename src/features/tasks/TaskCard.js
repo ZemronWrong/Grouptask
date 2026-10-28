@@ -18,6 +18,7 @@ export function taskCardHTML(task, members, proofs, comments, viewIsAdmin, me, p
 
   const proof = proofs.find((p) => p.taskId === task.id);
   const commentCount = comments.filter((c) => c.taskId === task.id && !c.deleted).length;
+  const isMyCard = !viewIsAdmin && assignee?.id === me?.id;
 
   let proofBadge = '';
   if (task.status === 'pending-approval') {
@@ -26,11 +27,13 @@ export function taskCardHTML(task, members, proofs, comments, viewIsAdmin, me, p
       : `<span class="proof-status-badge">AWAITING APPROVAL</span>`;
   } else if (proof?.status === 'rejected') {
     proofBadge = `<span class="proof-status-badge proof-status-rejected">REJECTED ${proof.note ? `- ${escapeHtml(proof.note)}` : ''}</span>`;
-    if (!viewIsAdmin && assignee?.id === me?.id && task.status !== 'done') {
-      proofBadge += `<button class="btn btn-secondary btn-block btn-submit-proof" data-task-id="${task.id}" style="margin-bottom:12px; font-size:0.7rem;">RESUBMIT</button>`;
+    if (!viewIsAdmin && isMyCard && task.status !== 'done') {
+      proofBadge += `<button class="btn btn-secondary btn-block btn-submit-proof" data-task-id="${task.id}" style="margin-bottom:12px; font-size:0.7rem;">🔄 RESUBMIT</button>`;
     }
-  } else if (!viewIsAdmin && task.status === 'in-progress' && assignee?.id === me?.id) {
-    proofBadge = `<button class="btn btn-secondary btn-block btn-submit-proof" data-task-id="${task.id}" style="margin-bottom:12px; font-size:0.7rem;">MARK COMPLETE</button>`;
+  } else if (!viewIsAdmin && task.status === 'in-progress' && isMyCard) {
+    proofBadge = `<button class="btn btn-primary btn-block btn-submit-proof" data-task-id="${task.id}" style="margin-bottom:12px; font-size:0.75rem; letter-spacing:0.5px;">🚀 SUBMIT</button>`;
+  } else if (!viewIsAdmin && task.status === 'todo' && isMyCard) {
+    proofBadge = `<button class="btn btn-secondary btn-block btn-move-to-progress" data-task-id="${task.id}" style="margin-bottom:12px; font-size:0.75rem;">▶ MOVE TO IN PROGRESS</button>`;
   } else if (!viewIsAdmin && task.status === 'todo' && !assignee) {
     proofBadge = `<button class="btn btn-primary btn-block btn-self-assign" data-task-id="${task.id}" style="margin-bottom:12px; font-size:0.7rem;">${getTerm('acceptTask')}</button>`;
   }
@@ -62,6 +65,14 @@ export function taskCardHTML(task, members, proofs, comments, viewIsAdmin, me, p
     assigneeAvatarHTML = `<span class="task-assignee-label" style="margin:0; opacity:0.6;">Unassigned</span>`;
   }
 
+  // Show proof link row if proof has a link
+  const proofLinkRow = proof?.link
+    ? `<div class="task-proof-link" style="display:flex; align-items:center; gap:6px; padding:6px 0; border-top:1px solid var(--border); margin-top:6px; font-size:0.75rem; color:var(--text-secondary);">
+        <span>🔗</span>
+        <a href="${escapeHtml(proof.link)}" target="_blank" rel="noopener" style="color:var(--primary); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:180px;" title="${escapeHtml(proof.link)}">${escapeHtml(proof.link)}</a>
+      </div>`
+    : '';
+
   return `
     <div class="task-card ${viewIsAdmin ? 'draggable' : ''}" ${viewIsAdmin ? 'draggable="true"' : ''} data-task-id="${task.id}">
       <div class="task-card-top">
@@ -76,6 +87,7 @@ export function taskCardHTML(task, members, proofs, comments, viewIsAdmin, me, p
       ${task.description ? `<p class="task-desc">${escapeHtml(task.description)}</p>` : ''}
 
       ${proofBadge}
+      ${proofLinkRow}
 
       <div class="task-card-bottom">
         ${assigneeAvatarHTML}
@@ -84,6 +96,7 @@ export function taskCardHTML(task, members, proofs, comments, viewIsAdmin, me, p
     </div>
   `;
 }
+
 
 
 /** Brief achievement unlock popup — auto-dismisses after 5 s. */
