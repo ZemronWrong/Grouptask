@@ -1055,10 +1055,13 @@ textarea { resize: vertical; }
   gap: 0;
   align-items: flex-start;
   min-height: calc(100dvh - 75px);
+  /* Allow horizontal scroll on the wrapper if columns cannot fit */
+  overflow-x: auto;
 }
 .kanban-board {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  /* Columns will not shrink below 220px -- prevents overlap on smaller windows */
+  grid-template-columns: repeat(3, minmax(220px, 1fr));
   gap: 20px;
   padding: 24px;
   flex: 1;
@@ -1387,17 +1390,84 @@ textarea { resize: vertical; }
 
 @keyframes fadeSlideUp { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
 
-/* Media Queries */
+/* ===============================================
+   RESPONSIVE BREAKPOINTS
+   =============================================== */
+
+/* -- Mid-range: tablets / small laptops (901px-1200px) -- */
+@media (max-width: 1200px) {
+  /* Narrow sidebar so board columns have more room */
+  :root { --sidebar-width: 200px; }
+
+  /* Kanban: enforce min column width so they never collapse to unusable sizes */
+  .kanban-board {
+    grid-template-columns: repeat(3, minmax(180px, 1fr));
+    gap: 14px;
+    padding: 16px;
+    overflow-x: auto;
+  }
+
+  /* Completed panel: slightly narrower on mid screens */
+  .completed-panel { width: 240px; }
+
+  /* Board header: allow wrapping so action buttons don't bleed off-screen */
+  .board-header { flex-wrap: wrap; gap: 8px; padding: 12px 16px; }
+  .board-header-right { flex-wrap: wrap; gap: 6px; }
+  .board-title { font-size: 1.1rem; }
+}
+
+/* -- Narrow: phones / very small windows (<=900px) -- */
 @media (max-width: 900px) {
+  /* Dashboard */
   .dashboard-layout { grid-template-columns: 1fr; }
+
+  /* Hide sidebar, rely on full-width layout */
   .sidebar { display: none; }
+
+  /* Kanban: stack everything vertically */
   .kanban-wrapper { flex-direction: column; }
-  .kanban-board { grid-template-columns: 1fr; }
-  .completed-panel { width: 100%; min-height: unset; border-left: none; border-top: 1px solid var(--border); }
+  .kanban-board {
+    grid-template-columns: 1fr;
+    gap: 12px;
+    padding: 12px;
+    overflow-x: unset;
+  }
+  .completed-panel {
+    width: 100%;
+    min-height: unset;
+    border-left: none;
+    border-top: 1px solid var(--border);
+  }
+
+  /* Board header: stack rows */
+  .board-header { flex-wrap: wrap; gap: 8px; padding: 10px 12px; }
+  .board-header-left,
+  .board-header-right { flex-wrap: wrap; gap: 6px; width: 100%; }
+  .board-title { font-size: 1rem; }
+
+  /* Leaderboard */
   .lb-row { grid-template-columns: 40px 1.2fr 0.8fr 1fr; font-size: 0.8rem; padding: 10px 12px; }
+
+  /* Misc pages */
   .settings-page { padding: 12px; }
   .profile-hero { flex-direction: column; text-align: center; }
   .profile-stats-grid { grid-template-columns: repeat(2, 1fr); }
+
+  /* Podium: stack cards on small screens */
+  .podium { flex-direction: column; align-items: center; gap: 12px; }
+  .podium-card { width: 100%; max-width: 320px; }
+
+  /* Dashboard sidebar becomes top bar */
+  .dash-sidebar { width: 100%; min-height: auto; position: relative; }
+}
+
+/* -- Extra-narrow: very small phones (<=480px) -- */
+@media (max-width: 480px) {
+  .board-header-right .btn { font-size: 0.72rem; padding: 5px 8px; }
+  .user-badge { padding: 4px 8px 4px 4px; font-size: 0.75rem; }
+  .kanban-board { padding: 8px; gap: 10px; }
+  .task-card { padding: 12px; }
+  .profile-stats-grid { grid-template-columns: 1fr; }
 }
 
 /* ═══════════════════════════════════════════
