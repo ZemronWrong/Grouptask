@@ -393,7 +393,57 @@ export async function renderEvaluation(groupId) {
       }
 
       showToast(`Evaluation for ${evaluatee?.displayName || 'teammate'} submitted! ⭐`);
-      await renderEvaluation(groupId);
+
+      // Patch only the submitted card in-place - preserving other cards' unsaved star ratings.
+      // A full renderEvaluation() would destroy the entire page DOM, losing any ratings the
+      // user has selected but not yet submitted on other teammate cards.
+      const submittedCard = form.closest('.eval-card');
+      if (submittedCard) {
+        // Swap the 'PENDING RATING' pill for the 'EVALUATION SUBMITTED' badge
+        const headerRight = submittedCard.querySelector('.eval-card-header > div:last-child');
+        if (headerRight) {
+          headerRight.innerHTML = `
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span style="background:rgba(34,197,94,0.2); color:#22c55e; border:1px solid rgba(34,197,94,0.4); font-size:0.75rem; font-weight:700; padding:4px 10px; border-radius:6px; display:inline-flex; align-items:center; gap:4px; font-family:var(--font-heading);">
+                ✓ EVALUATION SUBMITTED
+              </span>
+              <div class="eval-pe-score" style="color:var(--primary); font-weight:700;">Rated: ${score}/5 ⭐</div>
+            </div>`;
+        }
+
+        // Apply submitted card green styling
+        submittedCard.style.borderColor = 'rgba(34,197,94,0.45)';
+        submittedCard.style.background = 'linear-gradient(to bottom, rgba(34,197,94,0.06), transparent)';
+
+        // Insert or refresh the 'already evaluated' note just above the form
+        let alreadyNote = submittedCard.querySelector('.eval-already-note');
+        if (!alreadyNote) {
+          alreadyNote = document.createElement('div');
+          alreadyNote.className = 'eval-already-note';
+          submittedCard.insertBefore(alreadyNote, form);
+        }
+        alreadyNote.style.cssText = 'font-size:0.82rem; color:#22c55e; margin:8px 0 12px 0; font-weight:600; display:flex; align-items:center; gap:6px;';
+        alreadyNote.textContent = `✓ You evaluated this teammate (${score}/5 ⭐). You can modify your rating or feedback below:`;
+
+        // Swap the submit button label
+        const submitBtn = form.querySelector('button[type="submit"]');
+        if (submitBtn) {
+          submitBtn.textContent = '✓ Update Evaluation';
+          submitBtn.className = 'btn btn-secondary btn-sm';
+          submitBtn.style.fontWeight = '700';
+        }
+
+        // Keep the in-closure myReviews in sync so subsequent submits use the update path.
+        const existingIdx = myReviews.findIndex(r =>
+          r.evaluateeId === evaluateeId || r.evaluateeUid === evaluatee?.uid
+        );
+        if (existingIdx >= 0) myReviews[existingIdx] = review;
+        else myReviews.push(review);
+      } else {
+        // DOM card not found (shouldn't happen) - fall back to full re-render
+        await renderEvaluation(groupId);
+      }
     });
   });
 }
+

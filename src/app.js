@@ -91,20 +91,45 @@ export async function boot() {
 
   // When Firestore pushes new data to IndexedDB, refresh the active screen
   let reloadTimeout = null;
-  setRemoteChangeCallback(() => {
-    // Prevent violent refreshes if the user is typing inside a modal
-    const isModalOpen = document.querySelector('.modal-overlay:not([hidden])');
-    if (isModalOpen) {
-      console.info('[App] Remote change received, but delaying UI refresh because a modal is open.');
-      return;
+  let pendingReload = false;
+
+  function hasDirtyInputs() {
+    // Check modals
+    if (document.querySelector('.modal-overlay:not([hidden])')) return true;
+    // Check any focused or non-empty text inputs/textareas not in a committed form
+    const inputs = document.querySelectorAll('input[type="text"], input[type="url"], input[type="email"], textarea');
+    for (const el of inputs) {
+      if (el.value.trim() !== '') return true;
     }
-    
-    // Debounce the reload to prevent UI flickering on burst updates (like initial load)
+    // Check if any radio/checkbox has been changed from its default (eval forms)
+    const evalForms = document.querySelectorAll('.eval-form');
+    if (evalForms.length > 0) return true;
+    return false;
+  }
+
+  function scheduleReload() {
     if (reloadTimeout) clearTimeout(reloadTimeout);
     reloadTimeout = setTimeout(() => {
+      if (hasDirtyInputs()) {
+        // User is actively interacting — mark as pending and retry soon
+        console.info('[App] Remote change deferred: user has unsaved input.');
+        pendingReload = true;
+        return;
+      }
+      pendingReload = false;
       reloadCurrentRoute();
     }, 300);
-  });
+  }
+
+  setRemoteChangeCallback(scheduleReload);
+
+  // When the user finishes interacting (blur on inputs), flush any pending reload
+  document.addEventListener('blur', () => {
+    if (pendingReload && !hasDirtyInputs()) {
+      pendingReload = false;
+      reloadCurrentRoute();
+    }
+  }, true);
 
   initRouter();
 }
