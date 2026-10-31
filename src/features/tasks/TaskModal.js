@@ -62,7 +62,7 @@ export function taskModalHTML(members, statuses, isAdmin = true) {
               </select>
             </div>
             <div class="form-group">
-              <label for="task-weight-input">${getTerm('rewardLabel')}</label>
+              <label for="task-weight-input">${getTerm('weightLabel')}</label>
               <input type="number" id="task-weight-input" min="10" step="10" value="100" required aria-describedby="task-weight-hint" />
             </div>
           </div>

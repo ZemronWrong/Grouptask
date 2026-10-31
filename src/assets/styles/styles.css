@@ -4510,3 +4510,9 @@ textarea { resize: vertical; }
   .toast-region { bottom: 64px; }
   .toast { gap: 10px; padding: 10px 12px; }
 }
+
+/* ── I1: while a modal or the confirm dialog is open, toasts sit at the top
+   centre so they never cover the modal's fields or buttons ── */
+.toast-region.toast-region-top { top: 12px; bottom: auto; }
+.toast-region-top .toast { animation-name: toastInTop; }
+@keyframes toastInTop { from { transform: translateY(-12px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }

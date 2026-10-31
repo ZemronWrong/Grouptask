@@ -9,10 +9,14 @@
 // ── Toasts ────────────────────────────────────────────────────────────────────
 // One region, bottom centre, above the connection pill's row so they never
 // overlap it. Errors stay longer than success messages.
+// I1: while a modal or the confirm dialog is open the region moves to the top
+// centre so it never covers the modal's fields or buttons, and identical
+// messages collapse into one toast with a count.
 
 const TOAST_MS = { success: 3000, info: 3000, error: 6000 };
 const TOAST_ACTION_MS = 5000;  // long enough to press Undo
 const MAX_TOASTS = 3;
+const MODAL_SELECTOR = '.modal-overlay, .member-popup-overlay, .confirm-overlay';
 
 /** How long a toast stays up. */
 export function toastDuration(type = 'info', hasAction = false) {
@@ -20,7 +24,13 @@ export function toastDuration(type = 'info', hasAction = false) {
   return TOAST_MS[type] || TOAST_MS.info;
 }
 
+/** Text shown for a toast collapsed `count` times, e.g. "Undo (2)". */
+export function withCount(label, count) {
+  return count > 1 ? `${label} (${count})` : label;
+}
+
 let toastRegion = null;
+const openToasts = new Map();  // key -> { el, count, actions, close }
 
 function getToastRegion() {
   if (!toastRegion || !toastRegion.isConnected) {
@@ -33,35 +43,90 @@ function getToastRegion() {
   return toastRegion;
 }
 
+function isVisible(el) {
+  return !!el && !el.hidden && el.isConnected && el.getClientRects().length > 0;
+}
+
+function anyModalOpen() {
+  return [...document.querySelectorAll(MODAL_SELECTOR)].some(isVisible);
+}
+
+/** Put the toast region at the top while a modal is open, at the bottom otherwise. */
+export function placeToasts() {
+  if (typeof document === 'undefined') return;
+  if (toastRegion?.isConnected) toastRegion.classList.toggle('toast-region-top', anyModalOpen());
+}
+
+/** Close every toast that offers an action (Undo); called when a modal opens. */
+export function dismissActionToasts() {
+  for (const entry of [...openToasts.values()]) if (entry.actions.length) entry.close();
+}
+
 /**
  * Show a toast. `type` is 'success' | 'info' | 'error'. `action` adds a button,
  * e.g. { label: 'Undo', onClick }. Returns a function that closes the toast.
+ * Showing the same message again while it is up bumps its count instead of
+ * adding a second toast; its Undo then takes back every collapsed action,
+ * newest first.
  */
 export function showToast(message, { type = 'info', action = null, duration } = {}) {
+  const key = `${type}|${action?.label || ''}|${message}`;
+  const ms = duration ?? toastDuration(type, !!action);
+  const existing = openToasts.get(key);
+  if (existing?.el.isConnected) {
+    existing.count += 1;
+    if (action) existing.actions.push(action.onClick);
+    existing.refresh();
+    existing.restart(ms);
+    existing.el.parentElement?.appendChild(existing.el);  // newest at the bottom
+    return existing.close;
+  }
+
   const el = document.createElement('div');
   el.className = `toast toast-${type}`;
   if (type === 'error') el.setAttribute('role', 'alert');
   const text = document.createElement('span');
-  text.textContent = message;
   el.appendChild(text);
 
   let timer = null;
-  const close = () => { clearTimeout(timer); el.remove(); };
+  const entry = { el, count: 1, actions: action ? [action.onClick] : [] };
+  entry.close = () => {
+    clearTimeout(timer);
+    el.remove();
+    if (openToasts.get(key) === entry) openToasts.delete(key);
+  };
+  entry.restart = (t) => { clearTimeout(timer); timer = setTimeout(entry.close, t); };
 
+  let btn = null;
   if (action) {
-    const btn = document.createElement('button');
+    btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'toast-action';
-    btn.textContent = action.label;
-    btn.addEventListener('click', () => { close(); action.onClick(); });
+    btn.addEventListener('click', async () => {
+      const actions = entry.actions.slice().reverse();
+      entry.close();
+      for (const run of actions) await run();
+    });
     el.appendChild(btn);
   }
+  entry.refresh = () => {
+    // With a button the count goes on it ("Undo (2)"); otherwise on the message
+    text.textContent = btn ? message : withCount(message, entry.count);
+    if (btn) btn.textContent = withCount(action.label, entry.count);
+  };
+  entry.refresh();
+  openToasts.set(key, entry);
 
   const region = getToastRegion();
+  placeToasts();
   region.appendChild(el);
-  while (region.children.length > MAX_TOASTS) region.firstElementChild.remove();
-  timer = setTimeout(close, duration ?? toastDuration(type, !!action));
-  return close;
+  while (region.children.length > MAX_TOASTS) {
+    const oldest = region.firstElementChild;
+    const old = [...openToasts.values()].find((e) => e.el === oldest);
+    if (old) old.close(); else oldest.remove();
+  }
+  entry.restart(ms);
+  return entry.close;
 }
 
 // ── Busy buttons ──────────────────────────────────────────────────────────────
@@ -165,10 +230,6 @@ const OVERLAY_SELECTOR = '.modal-overlay, .member-popup-overlay';
 const CLOSE_SELECTOR = '.btn-close-modal, #btn-close-detail-modal, #member-popup-close, [data-close]';
 const FIELD_SELECTOR = 'input:not([type="hidden"]):not([disabled]), textarea:not([disabled]), select:not([disabled])';
 
-function isVisible(el) {
-  return !!el && !el.hidden && el.isConnected && el.getClientRects().length > 0;
-}
-
 function openOverlays() {
   return [...document.querySelectorAll(OVERLAY_SELECTOR)].filter(isVisible);
 }
@@ -220,13 +281,23 @@ export function initModalKeyboard() {
   });
 
   const openers = new Map();  // overlay -> element to return focus to
+  let confirmOpen = false;
   const sync = () => {
     const open = openOverlays();
+    let opened = false;
     for (const overlay of open) {
       if (openers.has(overlay)) continue;
       openers.set(overlay, lastOutsideFocus);
       focusFirstField(overlay);
+      opened = true;
     }
+    // I1: the confirm dialog counts as a modal for toasts too
+    const confirmNow = !!document.querySelector('.confirm-overlay');
+    if (confirmNow && !confirmOpen) opened = true;
+    confirmOpen = confirmNow;
+    // I1: a newly opened modal clears any Undo toasts and moves the rest to the top
+    if (opened) dismissActionToasts();
+    placeToasts();
     for (const [overlay, opener] of openers) {
       if (open.includes(overlay)) continue;
       openers.delete(overlay);

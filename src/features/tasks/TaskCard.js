@@ -7,6 +7,11 @@ import { escapeHtml, formatRelative } from '../../utils/helpers.js';
 import { getTerm } from '../../services/themeService.js';
 import { canDragTask } from './taskPermissions.js';
 
+/** I2: the chip shows what the member earns; the tooltip says it is also the weight. */
+export function rewardTooltip(weight) {
+  return `Weight ${weight}. Earns ${weight} ${getTerm('rewardLabel').toLowerCase()} when approved.`;
+}
+
 /**
  * Returns the HTML string for a single task card.
  * The board delegates events, so no listeners are attached here.
@@ -95,7 +100,7 @@ export function taskCardHTML(task, members, proofs, comments, viewIsAdmin, me, p
 
       <div class="task-card-bottom">
         ${assigneeAvatarHTML}
-          <span class="task-reward" style="margin-left: auto;">${task.weight || 100} ${getTerm('rewardIcon')}</span>
+          <span class="task-reward" style="margin-left: auto;" title="${escapeHtml(rewardTooltip(task.weight || 100))}">${task.weight || 100} ${getTerm('rewardIcon')}</span>
       </div>
     </div>
   `;

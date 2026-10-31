@@ -24,6 +24,7 @@ export const TERMS = {
     tasks: 'Tasks',
     addQuest: '+ Add task',
     rewardLabel: 'Points',
+    weightLabel: 'Weight',
     rewardIcon: 'pts',
     pendingProof: 'waiting for review',
     reviewProof: 'Review submission',
@@ -51,6 +52,7 @@ export const TERMS = {
     tasks: 'Quests',
     addQuest: '+ ADD QUEST',
     rewardLabel: 'Gold',
+    weightLabel: 'Quest weight',
     rewardIcon: 'Gold',
     pendingProof: 'PROOF AWAITING',
     reviewProof: 'REVIEW PROOF',
@@ -78,6 +80,7 @@ export const TERMS = {
     tasks: 'Assignments',
     addQuest: '+ ADD ASSIGNMENT',
     rewardLabel: 'Points',
+    weightLabel: 'Weight',
     rewardIcon: 'Pts',
     pendingProof: 'SUBMISSION AWAITING',
     // F2: the consent form says nothing in the app is marked, so no marking wording
