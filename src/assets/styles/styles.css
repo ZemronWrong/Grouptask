@@ -33,8 +33,9 @@
   --text-secondary: #b59b75;
   --text-muted: #8b7355;
   
-  --font-heading: 'Cinzel', serif;
-  --font-body: 'Crimson Text', serif;
+  /* F2: plain fonts by default; Guild swaps in its own */
+  --font-heading: 'Outfit', sans-serif;
+  --font-body: 'Nunito', sans-serif;
   
   --radius: 8px;
   --radius-lg: 16px;
@@ -120,10 +121,10 @@
   --shadow-glow: 0 0 0 transparent;
 }
 
-/* ── SCHOOL BOARD THEME overrides (Fonts) ── */
-[data-board-theme="school"] {
-  --font-heading: 'Outfit', sans-serif;
-  --font-body: 'Nunito', sans-serif;
+/* ── GUILD BOARD THEME overrides (Fonts) ── */
+[data-board-theme="guild"] {
+  --font-heading: 'Cinzel', serif;
+  --font-body: 'Crimson Text', serif;
 }
 
 /* ═══════════════════════════════════════════
@@ -3587,7 +3588,7 @@ textarea { resize: vertical; }
   gap: 7px;
   padding: 7px 14px 7px 10px;
   border-radius: 999px;
-  font-family: var(--font-body, 'Crimson Text', serif);
+  font-family: var(--font-body, sans-serif);
   font-size: 0.82rem;
   font-weight: 600;
   letter-spacing: 0.4px;
@@ -3814,6 +3815,13 @@ textarea { resize: vertical; }
   color: var(--text);
   box-shadow: var(--shadow-sm);
   position: relative;
+}
+/* F1: below ~640 px the mini board keeps readable column widths and scrolls sideways */
+.wd-board-scroll { overflow-x: auto; scrollbar-width: thin; }
+@media (max-width: 640px) {
+  .welcome-demo { padding: 14px; }
+  .wd-board { grid-template-columns: repeat(4, 150px); width: max-content; }
+  .wd-caption { font-size: 0.95rem; }
 }
 /* The board cards sit on top of the grid; --col picks the column (0-3) */
 .wd-board .wd-card {

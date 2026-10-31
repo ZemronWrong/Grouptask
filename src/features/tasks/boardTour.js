@@ -12,6 +12,7 @@
 
 import { startTour, isTourActive } from '../../utils/tour.js';
 import { isAdminMember } from './taskPermissions.js';
+import { getTerm, getApproversPhrase } from '../../services/themeService.js';
 
 // Bump to show the tour to everyone again after it changes.
 export const BOARD_TOUR_VERSION = 'v1';
@@ -38,75 +39,87 @@ export const DRAG_DEMO_HTML = `
   </div>
 `;
 
-const COLUMNS_STEP = {
-  selector: SEL.columns,
-  title: 'How tasks move',
-  text: 'Tasks move left to right: To Do → In Progress → Pending Approval → Completed.',
-};
+// F2: wording comes from the current board theme (Standard by default), so the
+// tour names the same buttons and roles the board shows.
+function columnsStep() {
+  return {
+    selector: SEL.columns,
+    title: 'How tasks move',
+    text: `Tasks move left to right: ${getTerm('todoColumn')} → In Progress → Pending Approval → Completed.`,
+  };
+}
 
-const SCORE_STEP = {
-  selector: SEL.score,
-  title: 'Points and scores',
-  text: 'The leaderboard shows points. Each person sees only their own contribution score.',
-};
+function scoreStep() {
+  return {
+    selector: SEL.score,
+    title: 'Points and scores',
+    text: `The leaderboard shows ${getTerm('rewardLabel').toLowerCase()}. Each person sees only their own contribution score.`,
+  };
+}
 
-const ADMIN_STEPS = [
-  COLUMNS_STEP,
-  {
-    selector: SEL.addTask,
-    title: 'Add tasks',
-    text: "Add tasks here. Set a weight: bigger or harder tasks get a higher weight, and that's what contribution scores are based on.",
-  },
-  {
-    selector: SEL.dragCard,
-    title: 'Drag and drop',
-    text: 'Drag cards (look for the ⋮⋮ handle) to another column. Dropping a submitted card on Completed opens the review. Completed cards are locked.',
-    demo: DRAG_DEMO_HTML,
-  },
-  {
-    selector: SEL.pending,
-    title: 'Approve submitted work',
-    text: "When a member submits a task it lands here. Open it and approve or reject it. You can't approve a task that's assigned to you. Your co-leader approves yours.",
-  },
-  SCORE_STEP,
-];
+function adminSteps() {
+  return [
+    columnsStep(),
+    {
+      selector: SEL.addTask,
+      title: 'Add tasks',
+      text: `Add tasks here with ${getTerm('addQuest')}. Set a weight: bigger or harder tasks get a higher weight, and that's what contribution scores are based on.`,
+    },
+    {
+      selector: SEL.dragCard,
+      title: 'Drag and drop',
+      text: 'Drag cards (look for the ⋮⋮ handle) to another column. Dropping a submitted card on Completed opens the review. Completed cards are locked.',
+      demo: DRAG_DEMO_HTML,
+    },
+    {
+      selector: SEL.pending,
+      title: 'Approve submitted work',
+      text: `When a ${getTerm('member').toLowerCase()} submits a task it lands here. Press ${getTerm('reviewProof')} to approve or reject it. You can't approve a task that's assigned to you: the other ${getApproversPhrase()} approves yours.`,
+    },
+    scoreStep(),
+  ];
+}
 
-const MEMBER_STEPS = [
-  COLUMNS_STEP,
-  {
-    selector: SEL.dragCard,
-    title: 'Drag and drop',
-    text: 'Drag your cards (look for the ⋮⋮ handle) to move them. Drag an unassigned card into In Progress to take it.',
-    demo: DRAG_DEMO_HTML,
-  },
-  {
-    selector: SEL.pending,
-    title: 'Submit for approval',
-    text: 'Finished? Drag your card here (or press 🚀 SUBMIT) and add a link to your work. An admin checks it and moves it to Completed.',
-  },
-  {
-    selector: SEL.completed,
-    title: 'Completed',
-    text: "Only admins can move cards here. That's the approval step.",
-  },
-  SCORE_STEP,
-];
+function memberSteps() {
+  return [
+    columnsStep(),
+    {
+      selector: SEL.dragCard,
+      title: 'Drag and drop',
+      text: 'Drag your cards (look for the ⋮⋮ handle) to move them. Drag an unassigned card into In Progress to take it.',
+      demo: DRAG_DEMO_HTML,
+    },
+    {
+      selector: SEL.pending,
+      title: 'Submit for approval',
+      text: `Finished? Drag your card here (or press 🚀 ${getTerm('submitProof')}) and add a link to your work. Your ${getApproversPhrase()} checks it and moves it to Completed.`,
+    },
+    {
+      selector: SEL.completed,
+      title: 'Completed',
+      text: `Only the ${getApproversPhrase()} can move cards here. That's the approval step.`,
+    },
+    scoreStep(),
+  ];
+}
 
-const VIEWER_STEPS = [
-  COLUMNS_STEP,
-  {
-    selector: SEL.completed,
-    title: 'View only',
-    text: "You can open cards and follow progress, but viewers can't move tasks. Admins approve cards into Completed.",
-  },
-  SCORE_STEP,
-];
+function viewerSteps() {
+  return [
+    columnsStep(),
+    {
+      selector: SEL.completed,
+      title: 'View only',
+      text: `You can open cards and follow progress, but viewers can't move tasks. The ${getApproversPhrase()} approves cards into Completed.`,
+    },
+    scoreStep(),
+  ];
+}
 
 /** The tour for this member's role. */
 export function boardTourSteps(me) {
-  if (isAdminMember(me)) return ADMIN_STEPS;
-  if (me?.role === 'viewer') return VIEWER_STEPS;
-  return MEMBER_STEPS;
+  if (isAdminMember(me)) return adminSteps();
+  if (me?.role === 'viewer') return viewerSteps();
+  return memberSteps();
 }
 
 // ── "Seen" flag ───────────────────────────────────────────────────────────────

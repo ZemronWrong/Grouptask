@@ -3,7 +3,7 @@ import { onAuthChange, currentUser } from './services/authService.js';
 import { openDB, getAllByIndex, STORES } from './services/indexedDBService.js';
 import { initTheme } from './services/themeService.js';
 import { startSync, stopSync, setRemoteChangeCallback, fetchGroupDataOnce } from './services/syncService.js';
-import { initConnectionStatus } from './services/connectionStatus.js';
+import { initConnectionStatus, setConnectionStatusVisible } from './services/connectionStatus.js';
 import { renderLogin } from './features/auth/LoginPage.js';
 import { renderRegister } from './features/auth/RegisterPage.js';
 import { renderWelcome } from './features/auth/WelcomePage.js';
@@ -23,6 +23,7 @@ function requireAuth(handler) {
       navigate('#/login');
       return;
     }
+    setConnectionStatusVisible(true);
     await handler(params);
   };
 }
@@ -33,6 +34,7 @@ function guestOnly(handler) {
       navigate('#/dashboard');
       return;
     }
+    setConnectionStatusVisible(false);
     await handler();
   };
 }

@@ -50,7 +50,7 @@ const DIFFICULTIES = [
 
 function getStatuses() {
   return [
-    { key: 'todo',             label: getTerm('taskBoard'),  icon: ICONS.todo       },
+    { key: 'todo',             label: getTerm('todoColumn'), icon: ICONS.todo       },
     { key: 'in-progress',      label: 'In Progress',         icon: ICONS.inProgress },
     { key: 'pending-approval', label: 'Pending Approval',    icon: ICONS.pending    },
     { key: 'done',             label: 'Completed',           icon: ICONS.done       },
@@ -104,7 +104,7 @@ function emptyColumnHTML(status, isAdmin) {
   if (status === 'todo') {
     return `<div class="column-empty-hint">${isAdmin
       ? `Add your first task with ${escapeHtml(getTerm('addQuest'))} below.`
-      : `No tasks yet. Your leader adds them with ${escapeHtml(getTerm('addQuest'))}.`}</div>`;
+      : `No tasks yet. Your ${escapeHtml(getTerm('owner').toLowerCase())} adds them with ${escapeHtml(getTerm('addQuest'))}.`}</div>`;
   }
   return '';
 }

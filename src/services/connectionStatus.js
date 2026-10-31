@@ -54,9 +54,16 @@ function _getOrCreate() {
   if (!_el) {
     _el = document.createElement('div');
     _el.id = 'connection-status';
+    // F1: hidden until a signed-in screen shows it (it means nothing on guest pages)
+    _el.hidden = true;
     document.body.appendChild(_el);
   }
   return _el;
+}
+
+/** F1: show the pill on signed-in screens, hide it on the welcome/login/register pages. */
+export function setConnectionStatusVisible(visible) {
+  _getOrCreate().hidden = !visible;
 }
 
 function _render() {

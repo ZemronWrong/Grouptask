@@ -26,15 +26,15 @@ export function taskCardHTML(task, members, proofs, comments, viewIsAdmin, me, p
   let proofBadge = '';
   if (task.status === 'pending-approval') {
     proofBadge = viewIsAdmin
-      ? `<button class="btn btn-primary btn-block btn-review-proof" data-proof-id="${proof?.id || ''}" data-task-id="${task.id}" style="margin-bottom:12px; font-size:0.7rem;">REVIEW APPROVAL</button>`
+      ? `<button class="btn btn-primary btn-block btn-review-proof" data-proof-id="${proof?.id || ''}" data-task-id="${task.id}" style="margin-bottom:12px; font-size:0.7rem;">${getTerm('reviewProof')}</button>`
       : `<span class="proof-status-badge">AWAITING APPROVAL</span>`;
   } else if (proof?.status === 'rejected') {
     proofBadge = `<span class="proof-status-badge proof-status-rejected">REJECTED ${proof.note ? `- ${escapeHtml(proof.note)}` : ''}</span>`;
     if (!viewIsAdmin && isMyCard && task.status !== 'done') {
-      proofBadge += `<button class="btn btn-secondary btn-block btn-submit-proof" data-task-id="${task.id}" style="margin-bottom:12px; font-size:0.7rem;">🔄 RESUBMIT</button>`;
+      proofBadge += `<button class="btn btn-secondary btn-block btn-submit-proof" data-task-id="${task.id}" style="margin-bottom:12px; font-size:0.7rem;">🔄 ${getTerm('resubmitProof')}</button>`;
     }
   } else if (!viewIsAdmin && task.status === 'in-progress' && isMyCard) {
-    proofBadge = `<button class="btn btn-primary btn-block btn-submit-proof" data-task-id="${task.id}" style="margin-bottom:12px; font-size:0.75rem; letter-spacing:0.5px;">🚀 SUBMIT</button>`;
+    proofBadge = `<button class="btn btn-primary btn-block btn-submit-proof" data-task-id="${task.id}" style="margin-bottom:12px; font-size:0.75rem; letter-spacing:0.5px;">🚀 ${getTerm('submitProof')}</button>`;
   } else if (!viewIsAdmin && task.status === 'todo' && isMyCard) {
     proofBadge = `<button class="btn btn-secondary btn-block btn-move-to-progress" data-task-id="${task.id}" style="margin-bottom:12px; font-size:0.75rem;">▶ MOVE TO IN PROGRESS</button>`;
   } else if (!viewIsAdmin && task.status === 'todo' && !assignee) {

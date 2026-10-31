@@ -6,6 +6,7 @@
 import { STORES, get, getAllByIndex, getAll, put, add, addToSyncQueue, remove } from '../../services/indexedDBService.js';
 import { currentUser } from '../../services/authService.js';
 import { escapeHtml, generateId } from '../../utils/helpers.js';
+import { getRoleName } from '../../services/themeService.js';
 import { notify } from '../../services/notificationService.js';
 import { ICONS } from '../../assets/icons/icons.js';
 import { logActivity } from '../../services/activityLogService.js';
@@ -80,7 +81,7 @@ async function buildMemberPopup(member, groupId) {
           <div style="min-width:0; flex:1;">
             <h3 style="margin:0 0 4px 0; font-size:1.05rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(member.displayName)}</h3>
             <div style="font-size:0.75rem; color:var(--primary); font-family:var(--font-heading); font-weight:600;">
-              ${member.role === 'owner' ? 'Owner' : member.role === 'co-admin' ? 'Co-owner' : member.role === 'viewer' ? 'Only View' : 'Member'}
+              ${escapeHtml(getRoleName(member.role))}
             </div>
             ${email ? `
               <div style="font-size:0.75rem; color:var(--text-secondary); margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">

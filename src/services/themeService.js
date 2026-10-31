@@ -7,13 +7,46 @@ const THEME_KEYS = {
   BOARD: 'grouptask_board_theme'
 };
 
-const TERMS = {
+export const BOARD_THEMES = ['standard', 'guild', 'school'];
+// F2: plain wording by default; Guild and School are optional themes in Settings
+export const DEFAULT_BOARD_THEME = 'standard';
+
+export const TERMS = {
+  standard: {
+    appTitle: 'Group',
+    owner: 'Leader',
+    coAdmin: 'Co-leader',
+    member: 'Member',
+    viewer: 'Viewer',
+    taskBoard: 'Task Board',
+    todoColumn: 'To Do',
+    task: 'Task',
+    tasks: 'Tasks',
+    addQuest: '+ Add task',
+    rewardLabel: 'Points',
+    rewardIcon: 'pts',
+    pendingProof: 'waiting for review',
+    reviewProof: 'Review submission',
+    submitProof: 'Submit for approval',
+    resubmitProof: 'Resubmit',
+    acceptTask: 'Accept task',
+    abandonTask: 'Give up this task?',
+    saveTask: 'Save task',
+    newGroup: 'Create group',
+    joinGroup: 'Join group',
+    groupNamePlaceHolder: 'e.g. Capstone Group 3',
+    myGroups: 'My groups',
+    myRole: 'My role',
+    boardTitlePrefix: '📋'
+  },
   guild: {
     appTitle: 'Adventurers Guild',
     owner: 'Guildmaster',
     coAdmin: 'Vice Guildmaster',
     member: 'Guild Member',
+    viewer: 'Only View',
     taskBoard: 'Quest Board',
+    todoColumn: 'Quest Board',
     task: 'Quest',
     tasks: 'Quests',
     addQuest: '+ ADD QUEST',
@@ -22,6 +55,7 @@ const TERMS = {
     pendingProof: 'PROOF AWAITING',
     reviewProof: 'REVIEW PROOF',
     submitProof: 'SUBMIT PROOF',
+    resubmitProof: 'RESUBMIT',
     acceptTask: 'ACCEPT QUEST',
     abandonTask: 'Abandon this quest?',
     saveTask: 'Save Quest',
@@ -37,15 +71,19 @@ const TERMS = {
     owner: 'Leader',
     coAdmin: 'Assistant',
     member: 'Student',
+    viewer: 'Only View',
     taskBoard: 'Assignment Board',
+    todoColumn: 'Assignment Board',
     task: 'Assignment',
     tasks: 'Assignments',
     addQuest: '+ ADD ASSIGNMENT',
     rewardLabel: 'Points',
     rewardIcon: 'Pts',
     pendingProof: 'SUBMISSION AWAITING',
-    reviewProof: 'GRADE SUBMISSION',
+    // F2: the consent form says nothing in the app is marked, so no marking wording
+    reviewProof: 'Review submission',
     submitProof: 'TURN IN',
+    resubmitProof: 'TURN IN AGAIN',
     acceptTask: 'START ASSIGNMENT',
     abandonTask: 'Drop this assignment?',
     saveTask: 'Save Assignment',
@@ -58,8 +96,21 @@ const TERMS = {
   }
 };
 
-let currentColorTheme = localStorage.getItem(THEME_KEYS.COLOR) || 'blue';
-let currentBoardTheme = localStorage.getItem(THEME_KEYS.BOARD) || 'guild';
+function readSetting(key) {
+  try { return globalThis.localStorage?.getItem(key) ?? null; } catch { return null; }
+}
+
+function writeSetting(key, value) {
+  try { globalThis.localStorage?.setItem(key, value); } catch { /* private mode: this session only */ }
+}
+
+/** A stored board theme, or the default if it is missing or unknown. */
+export function normalizeBoardTheme(board) {
+  return BOARD_THEMES.includes(board) ? board : DEFAULT_BOARD_THEME;
+}
+
+let currentColorTheme = readSetting(THEME_KEYS.COLOR) || 'blue';
+let currentBoardTheme = normalizeBoardTheme(readSetting(THEME_KEYS.BOARD));
 
 export function initTheme() {
   applyThemeDOM();
@@ -67,13 +118,13 @@ export function initTheme() {
 
 export function setColorTheme(color) {
   currentColorTheme = color;
-  localStorage.setItem(THEME_KEYS.COLOR, color);
+  writeSetting(THEME_KEYS.COLOR, color);
   applyThemeDOM();
 }
 
 export function setBoardTheme(board) {
-  currentBoardTheme = board;
-  localStorage.setItem(THEME_KEYS.BOARD, board);
+  currentBoardTheme = normalizeBoardTheme(board);
+  writeSetting(THEME_KEYS.BOARD, currentBoardTheme);
   applyThemeDOM();
 }
 
@@ -89,7 +140,7 @@ export function getBoardTheme() {
  * Returns the mapped terminology for the current board theme.
  */
 export function getTerm(key) {
-  return TERMS[currentBoardTheme]?.[key] || key;
+  return TERMS[currentBoardTheme]?.[key] || TERMS[DEFAULT_BOARD_THEME][key] || key;
 }
 
 /**
@@ -97,9 +148,14 @@ export function getTerm(key) {
  */
 export function getRoleName(roleKey) {
   if (roleKey === 'owner') return getTerm('owner');
-  if (roleKey === 'co-admin') return 'Co-owner';
-  if (roleKey === 'viewer') return 'Only View';
+  if (roleKey === 'co-admin') return getTerm('coAdmin');
+  if (roleKey === 'viewer') return getTerm('viewer');
   return getTerm('member');
+}
+
+/** "leader or co-leader" — who approves work, for use inside a sentence. */
+export function getApproversPhrase() {
+  return `${getTerm('owner').toLowerCase()} or ${getTerm('coAdmin').toLowerCase()}`;
 }
 
 function applyThemeDOM() {

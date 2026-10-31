@@ -4,7 +4,7 @@
  */
 
 import { escapeHtml, formatRelative } from '../../utils/helpers.js';
-import { getTerm } from '../../services/themeService.js';
+import { getTerm, getRoleName } from '../../services/themeService.js';
 import { renderCommentsUI, bindCommentEvents } from './TaskComments.js';
 
 const DIFFICULTIES = [
@@ -168,12 +168,12 @@ export function shareModalHTML(members, group, profileMap = {}) {
                       ${email ? `<span class="share-member-email" style="font-size:0.75rem; color:var(--text-muted);">${escapeHtml(email)}</span>` : ''}
                     </div>
                     ${m.role === 'owner' ? `
-                      <span class="share-role-locked" style="background:var(--primary-soft); color:var(--primary); padding:3px 10px; border-radius:12px; font-size:0.72rem; font-family:var(--font-heading); font-weight:700;">OWNER</span>
+                      <span class="share-role-locked" style="background:var(--primary-soft); color:var(--primary); padding:3px 10px; border-radius:12px; font-size:0.72rem; font-family:var(--font-heading); font-weight:700;">${escapeHtml(getRoleName('owner').toUpperCase())}</span>
                     ` : `
                       <select class="share-role-select" data-member-id="${m.id}" style="font-size:0.75rem; padding:4px 8px; border-radius:6px; border:1px solid var(--border); background:var(--bg-input); color:var(--text);">
-                        <option value="co-admin" ${m.role === 'co-admin' ? 'selected' : ''}>Co-owner</option>
-                        <option value="member" ${m.role === 'member' ? 'selected' : ''}>Member</option>
-                        <option value="viewer" ${m.role === 'viewer' ? 'selected' : ''}>Only View</option>
+                        <option value="co-admin" ${m.role === 'co-admin' ? 'selected' : ''}>${escapeHtml(getRoleName('co-admin'))}</option>
+                        <option value="member" ${m.role === 'member' ? 'selected' : ''}>${escapeHtml(getRoleName('member'))}</option>
+                        <option value="viewer" ${m.role === 'viewer' ? 'selected' : ''}>${escapeHtml(getRoleName('viewer'))}</option>
                         <option value="remove">Remove</option>
                       </select>
                     `}
@@ -191,7 +191,7 @@ export function shareModalHTML(members, group, profileMap = {}) {
           <!-- TAB 2: JOIN REQUESTS -->
           <div id="share-tab-requests-content" hidden>
             <div style="font-size:0.82rem; color:var(--text-secondary); margin-bottom:12px;">
-              Review and manage pending requests to join this board. Owners and Co-owners can assign roles and approve.
+              Review and manage pending requests to join this board. ${escapeHtml(getRoleName('owner'))}s and ${escapeHtml(getRoleName('co-admin'))}s can assign roles and approve.
             </div>
 
             <div id="join-requests-container" style="display:flex; flex-direction:column; gap:10px; max-height:280px; overflow-y:auto;">
@@ -212,9 +212,9 @@ export function shareModalHTML(members, group, profileMap = {}) {
                   </div>
                   <div style="display:flex; flex-direction:column; gap:6px; align-items:flex-end;">
                     <select class="join-request-role-select" data-request-id="${req.id}" style="font-size:0.72rem; padding:3px 6px; border-radius:6px; border:1px solid var(--border); background:var(--bg-input); color:var(--text);">
-                      <option value="member" selected>Role: Member</option>
-                      <option value="viewer">Role: Only View</option>
-                      <option value="co-admin">Role: Co-owner</option>
+                      <option value="member" selected>Role: ${escapeHtml(getRoleName('member'))}</option>
+                      <option value="viewer">Role: ${escapeHtml(getRoleName('viewer'))}</option>
+                      <option value="co-admin">Role: ${escapeHtml(getRoleName('co-admin'))}</option>
                     </select>
                     <div style="display:flex; gap:6px;">
                       <button class="btn btn-primary btn-sm btn-accept-request" data-request-id="${req.id}" style="font-size:0.72rem; padding:3px 10px;">Accept</button>
@@ -251,7 +251,7 @@ export function boardMembersModalHTML(members, profileMap = {}) {
               const avatarHTML = hasPhoto
                 ? `<img src="${prof.avatar}" alt="${escapeHtml(m.displayName?.[0] || '?')}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`
                 : escapeHtml(m.displayName?.[0] || '?');
-              const roleLabel = m.role === 'owner' ? 'Owner' : m.role === 'co-admin' ? 'Co-owner' : m.role === 'viewer' ? 'Only View' : 'Member';
+              const roleLabel = getRoleName(m.role);
               const email = prof.email || m.email || (m.uid.includes('@') ? m.uid : '');
 
               return `

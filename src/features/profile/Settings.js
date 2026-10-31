@@ -64,7 +64,7 @@ export async function renderSettings() {
     { key: 'task_completed', label: 'Task Completed by Teammate' },
     { key: 'comment_added', label: 'Comment on My Card' },
     { key: 'peer_eval_reminder', label: 'Peer Evaluation Reminder' },
-    { key: 'approval_request', label: 'Approval Request (Owners/Co-Admins)' },
+    { key: 'approval_request', label: 'Approval Request (Leaders/Co-leaders)' },
     { key: 'free_rider_alert', label: 'Free-Rider Warning' },
     { key: 'badge_earned', label: 'Badge Earned' },
     { key: 'member_joined', label: 'Member Joined' },
@@ -153,6 +153,7 @@ export async function renderSettings() {
           <div class="settings-option-group" style="margin-top:16px;">
             <span class="settings-label">Terminology Style</span>
             <div class="theme-btn-group">
+              <button class="theme-btn ${getBoardTheme() === 'standard' ? 'active' : ''}" data-board="standard">📋 Standard</button>
               <button class="theme-btn ${getBoardTheme() === 'guild' ? 'active' : ''}" data-board="guild">⚔️ Guild</button>
               <button class="theme-btn ${getBoardTheme() === 'school' ? 'active' : ''}" data-board="school">🎓 School</button>
             </div>

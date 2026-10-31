@@ -41,7 +41,7 @@ describe('board tour steps', () => {
 
   test('owner and co-admin get the same five-step admin tour', () => {
     expect(boardTourSteps(owner)).toHaveLength(5);
-    expect(boardTourSteps(coAdmin)).toBe(boardTourSteps(owner));
+    expect(boardTourSteps(coAdmin)).toEqual(boardTourSteps(owner));
     expect(titles(owner)).toEqual(['How tasks move', 'Add tasks', 'Drag and drop', 'Approve submitted work', 'Points and scores']);
   });
 
@@ -51,7 +51,7 @@ describe('board tour steps', () => {
   });
 
   test('a missing member record falls back to the member tour', () => {
-    expect(boardTourSteps(undefined)).toBe(boardTourSteps(member));
+    expect(boardTourSteps(undefined)).toEqual(boardTourSteps(member));
   });
 
   test('everyone except viewers gets the drag-and-drop step with the mini demo', () => {
@@ -88,14 +88,14 @@ describe('board tour steps', () => {
     const adminText = boardTourSteps(owner).map((s) => s.text).join(' ');
     const t = (status, assignedTo = null) => ({ id: 't', status, assignedTo });
 
-    // "Only admins can move cards here"
-    expect(memberText).toMatch(/Only admins can move cards here/);
+    // "Only the leader or co-leader can move cards here"
+    expect(memberText).toMatch(/Only the leader or co-leader can move cards here/);
     expect(dropBlockReason(t('pending-approval', member.id), member, 'done')).not.toBeNull();
     // "Drag an unassigned card into In Progress to take it"
     expect(memberText).toMatch(/unassigned card into In Progress/);
     expect(dropBlockReason(t('todo'), member, 'in-progress')).toBeNull();
-    // "Drag your card here (or press 🚀 SUBMIT)"
-    expect(memberText).toMatch(/SUBMIT/);
+    // "Drag your card here (or press 🚀 Submit for approval)" — the card's button label
+    expect(memberText).toMatch(/🚀 Submit for approval/);
     expect(dropBlockReason(t('in-progress', member.id), member, 'pending-approval')).toBeNull();
     // "You can't approve a task that's assigned to you" / "Completed cards are locked"
     expect(adminText).toMatch(/can't approve a task that's assigned to you/);
@@ -246,8 +246,15 @@ describe('onboarding code is display-only', () => {
     importsOf('src/features/auth/WelcomePage.js').forEach((p) => expect(p).not.toMatch(NO_DATA));
   });
 
-  test('the tour helper and board tour import no services', () => {
+  // F2: the theme's wording is allowed; it only reads display settings
+  const THEME = '../../services/themeService.js';
+
+  test('the tour helper and board tour import no data services', () => {
     importsOf('src/utils/tour.js').forEach((p) => expect(p).not.toMatch(NO_DATA));
-    importsOf('src/features/tasks/boardTour.js').forEach((p) => expect(p).not.toMatch(NO_DATA));
+    importsOf('src/features/tasks/boardTour.js').filter((p) => p !== THEME).forEach((p) => expect(p).not.toMatch(NO_DATA));
+  });
+
+  test('the theme service itself imports nothing', () => {
+    expect(importsOf('src/services/themeService.js')).toEqual([]);
   });
 });

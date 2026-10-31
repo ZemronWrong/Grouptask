@@ -26,7 +26,7 @@ export const DEMO_STEPS = [
   },
   {
     column: 'done',
-    caption: 'An admin approves it, and you earn points and your contribution score goes up.',
+    caption: 'Your leader or co-leader approves it, and you earn points and your contribution score goes up.',
   },
 ];
 
@@ -70,7 +70,7 @@ function demoCardHTML(step) {
       <span class="wd-weight" title="Weight">⚖ 30</span>
       <span class="wd-avatar" ${step >= 1 ? '' : 'hidden'} title="You">Y</span>
     </div>
-    <div class="wd-submit" ${step === 2 ? '' : 'hidden'}>🚀 SUBMIT</div>
+    <div class="wd-submit" ${step === 2 ? '' : 'hidden'}>🚀 Submit for approval</div>
     <div class="wd-points" ${step === 3 ? '' : 'hidden'}>+30 pts</div>
   `;
 }
@@ -91,6 +91,7 @@ function scoreHTML() {
 function animatedDemoHTML() {
   return `
     <div class="welcome-demo" id="welcome-demo" data-step="0">
+      <div class="wd-board-scroll" id="wd-board-scroll">
       <div class="wd-board">
         ${DEMO_COLUMNS.map((c) => `
           <div class="wd-col" data-col="${c.key}">
@@ -102,6 +103,7 @@ function animatedDemoHTML() {
           <div class="wd-card-row"><span class="wd-weight">⚖ 20</span><span class="wd-avatar wd-avatar-other">B</span></div>
         </div>
         <div class="wd-card wd-card-moving" style="--col:0" id="wd-card">${demoCardHTML(0)}</div>
+      </div>
       </div>
       ${scoreHTML()}
       <p class="wd-caption" id="wd-caption" aria-live="off">${DEMO_STEPS[0].caption}</p>
@@ -135,6 +137,7 @@ function startDemo(root) {
   const card = root.querySelector('#wd-card');
   const caption = root.querySelector('#wd-caption');
   const pauseBtn = root.querySelector('#wd-pause');
+  const scroller = root.querySelector('#wd-board-scroll');
   let step = 0;
   let playing = true;
   let timer = null;
@@ -144,6 +147,7 @@ function startDemo(root) {
     root.dataset.step = String(i);
     const col = DEMO_COLUMNS.findIndex((c) => c.key === DEMO_STEPS[i].column);
     card.style.setProperty('--col', col);
+    followCard(col);
     card.innerHTML = demoCardHTML(i);
     caption.textContent = DEMO_STEPS[i].caption;
     root.querySelectorAll('.wd-dot').forEach((d) => {
@@ -151,6 +155,13 @@ function startDemo(root) {
       d.classList.toggle('active', on);
       d.setAttribute('aria-current', on ? 'step' : 'false');
     });
+  }
+
+  // F1: on narrow screens the board scrolls sideways; keep the moving card in view
+  function followCard(col) {
+    const overflow = scroller.scrollWidth - scroller.clientWidth;
+    if (overflow <= 0) return;
+    scroller.scrollTo({ left: overflow * (col / (DEMO_COLUMNS.length - 1)), behavior: 'smooth' });
   }
 
   function schedule() {
