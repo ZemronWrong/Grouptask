@@ -85,6 +85,7 @@ export function taskCardHTML(task, members, proofs, comments, viewIsAdmin, me, p
           ${task.deadline ? `<span class="task-deadline ${deadlineClass}">⏳ ${formatRelative(task.deadline)}</span>` : ''}
           ${commentCount > 0 ? `<span class="badge badge-subtle">💬 ${commentCount}</span>` : ''}
         </div>
+        ${canDrag ? '<span class="drag-handle" title="Drag to move" aria-hidden="true">⋮⋮</span>' : ''}
       </div>
       <h3 class="task-title">${escapeHtml(task.title)}</h3>
       ${task.description ? `<p class="task-desc">${escapeHtml(task.description)}</p>` : ''}

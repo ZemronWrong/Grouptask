@@ -7,6 +7,7 @@
  *   - Bind delegated events once via boardEvents.
  *   - Initialise drag-and-drop for every non-viewer.
  *   - Apply remote changes card by card (refreshBoard), without a full re-render.
+ *   - Show the first-time board tutorial (boardTour) once the board is on screen.
  *
  * Business logic (save, move, review, notify) lives in boardEvents.js.
  * HTML templates live in TaskCard.js and TaskModal.js.
@@ -29,6 +30,7 @@ import {
 } from './TaskModal.js';
 import { bindBoardEvents, moveTask, openProofSubmitModal, openProofReviewModal } from './boardEvents.js';
 import { dropBlockReason } from './taskPermissions.js';
+import { maybeStartBoardTour, startBoardTour } from './boardTour.js';
 
 // ── Module-level state (preserved across re-renders within the same session) ──
 let currentGroupId      = null;
@@ -96,6 +98,17 @@ function tasksForStatus(tasks, status) {
 
 const COMPLETED_EMPTY_HTML = `<div class="completed-empty" style="padding:24px 12px; text-align:center; color:var(--text-muted); font-size:0.85rem;"><div style="font-size:2rem; margin-bottom:8px;">🏆</div>Completed tasks will appear here.</div>`;
 
+/** What an empty column shows (D6: To Do tells people where tasks come from). */
+function emptyColumnHTML(status, isAdmin) {
+  if (status === 'done') return COMPLETED_EMPTY_HTML;
+  if (status === 'todo') {
+    return `<div class="column-empty-hint">${isAdmin
+      ? `Add your first task with ${escapeHtml(getTerm('addQuest'))} below.`
+      : `No tasks yet. Your leader adds them with ${escapeHtml(getTerm('addQuest'))}.`}</div>`;
+  }
+  return '';
+}
+
 function pendingBadgeHTML(count) {
   return `<span class="pulse-badge">⚠️ ${count} ${getTerm('pendingProof')}</span>`;
 }
@@ -159,6 +172,8 @@ export async function renderTaskBoard(groupId) {
             <button class="btn btn-secondary btn-sm" id="btn-share-btn">
               <span class="btn-icon-inline">${ICONS.link}</span> Share
             </button>
+            <button class="btn btn-secondary btn-sm btn-board-tour" id="btn-board-tour" type="button"
+              title="How this board works" aria-label="How this board works">?</button>
           </div>
         </header>
 
@@ -172,7 +187,7 @@ export async function renderTaskBoard(groupId) {
                   <span class="column-count">${tasks.filter((t) => t.status === s.key).length}</span>
                 </div>
                 <div class="column-cards">
-                  ${tasksForStatus(tasks, s.key).map((t) => cardHTML(t, data)).join('')}
+                  ${tasksForStatus(tasks, s.key).map((t) => cardHTML(t, data)).join('') || emptyColumnHTML(s.key, isAdmin)}
                 </div>
                 ${isAdmin && s.key === 'todo' ? `
                   <button class="btn btn-secondary btn-block btn-add-task-col" data-status="${s.key}"
@@ -192,7 +207,7 @@ export async function renderTaskBoard(groupId) {
               <span class="column-count">${tasks.filter(t => t.status === 'done').length}</span>
             </div>
             <div class="column-cards" id="completed-cards">
-              ${tasksForStatus(tasks, 'done').map((t) => cardHTML(t, data)).join('') || COMPLETED_EMPTY_HTML}
+              ${tasksForStatus(tasks, 'done').map((t) => cardHTML(t, data)).join('') || emptyColumnHTML('done', isAdmin)}
             </div>
           </aside>
         </div>
@@ -216,6 +231,10 @@ export async function renderTaskBoard(groupId) {
     document.getElementById('share-modal').hidden = false;
   });
 
+  // D6: replay the board tutorial. The tour only reads the page; it never writes.
+  const uid = currentUser()?.uid;
+  document.getElementById('btn-board-tour')?.addEventListener('click', () => startBoardTour(_boardContext.me, uid));
+
   if (!boardEventsInitialised) {
     bindBoardEvents(_boardContext, renderTaskBoard);
     bindSidebarEvents(groupId);
@@ -237,6 +256,9 @@ export async function renderTaskBoard(groupId) {
     });
     dragDropInitialised = true;
   }
+
+  // D6: first visit to any board shows the tutorial (once per user)
+  maybeStartBoardTour(me, uid);
 }
 
 // ── Remote changes (E3/E4) ────────────────────────────────────────────────────
@@ -249,7 +271,7 @@ let retryTimer = null;
 
 function isBusy() {
   return !!document.querySelector(
-    '.modal-overlay:not([hidden]), #task-detail-modal, #member-popup-overlay, .task-card.dragging'
+    '.modal-overlay:not([hidden]), #task-detail-modal, #member-popup-overlay, .task-card.dragging, .tour-overlay'
   );
 }
 
@@ -322,7 +344,7 @@ async function patchBoard(groupId, changes) {
       if (container.children[i] !== node) container.insertBefore(node, container.children[i] || null);
     });
     while (container.children.length > nodes.length) container.lastElementChild.remove();
-    if (status === 'done' && nodes.length === 0) container.innerHTML = COMPLETED_EMPTY_HTML;
+    if (nodes.length === 0) container.innerHTML = emptyColumnHTML(status, data.isAdmin);
 
     const count = col.querySelector('.column-count');
     if (count) count.textContent = String(list.length);

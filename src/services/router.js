@@ -2,6 +2,7 @@
  * Minimal hash-based SPA router.
  *
  * Routes:
+ *   #/welcome   (default for logged-out users)
  *   #/login
  *   #/dashboard
  *   #/settings
@@ -41,12 +42,12 @@ function matchRoute(path) {
 }
 
 function onHashChange() {
-  const path = window.location.hash.slice(1) || '/login';
+  const path = window.location.hash.slice(1) || '/welcome';
   const matched = matchRoute(path);
   if (matched) {
     return matched.handler(matched.params);
   } else {
-    navigate('#/login');
+    navigate('#/welcome');
   }
 }
 

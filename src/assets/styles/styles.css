@@ -3753,3 +3753,344 @@ textarea { resize: vertical; }
 @media (prefers-reduced-motion: reduce) {
   .task-card.remote-updated { animation: none; }
 }
+
+/* ═══════════════════════════════════════════
+   D4: WELCOME PAGE (#/welcome) + how-it-works demo
+   ═══════════════════════════════════════════ */
+.welcome-page {
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: 48px 16px 64px;
+  display: flex;
+  flex-direction: column;
+  gap: 56px;
+}
+.welcome-page [hidden] { display: none !important; }
+.welcome-hero { text-align: center; animation: fadeSlideUp 0.5s ease-out; }
+.welcome-title { font-family: var(--font-heading); color: var(--primary); font-size: 2.6rem; letter-spacing: 0.04em; }
+.welcome-tagline { color: var(--text-secondary); font-size: 1.2rem; max-width: 560px; margin: 12px auto 0; }
+.welcome-cta { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-top: 24px; }
+.welcome-cta .btn { text-decoration: none; min-width: 140px; justify-content: center; }
+.welcome-heading { font-family: var(--font-heading); color: var(--text); font-size: 1.3rem; text-align: center; margin-bottom: 20px; }
+
+.welcome-demo {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  padding: 20px;
+  box-shadow: var(--shadow-lg);
+}
+.wd-board {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  min-height: 230px;
+}
+.wd-col {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 8px;
+}
+.wd-col-title {
+  font-family: var(--font-heading);
+  color: var(--primary);
+  font-size: 0.75rem;
+  font-weight: 600;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.wd-card {
+  background: var(--bg-card-hover);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--primary);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  font-size: 0.8rem;
+  color: var(--text);
+  box-shadow: var(--shadow-sm);
+  position: relative;
+}
+/* The board cards sit on top of the grid; --col picks the column (0-3) */
+.wd-board .wd-card {
+  position: absolute;
+  top: 40px;
+  width: calc((100% - 30px) / 4 - 16px);
+  left: calc(var(--col) * ((100% - 30px) / 4 + 10px) + 8px);
+  transition: left 0.7s cubic-bezier(0.45, 0, 0.2, 1);
+}
+.wd-board .wd-card-static { top: 128px; opacity: 0.7; }
+.wd-card-moving { animation: wd-appear 0.5s ease-out; z-index: 1; }
+.welcome-demo[data-step="3"] .wd-card-moving { border-left-color: var(--success); }
+.wd-card-title { font-weight: 600; margin-bottom: 6px; line-height: 1.25; }
+.wd-card-row { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.wd-weight {
+  font-family: var(--font-heading);
+  font-size: 0.7rem;
+  color: var(--accent);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1px 7px;
+}
+.wd-avatar {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: var(--bg);
+  font-size: 0.7rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  animation: wd-appear 0.4s ease-out;
+}
+.wd-avatar-other { background: var(--secondary); color: var(--text); animation: none; }
+.wd-submit {
+  margin-top: 6px;
+  text-align: center;
+  font-size: 0.65rem;
+  font-weight: 700;
+  border-radius: var(--radius-sm);
+  background: var(--primary);
+  color: var(--bg);
+  padding: 3px 0;
+  animation: wd-pulse 1.1s ease-in-out infinite;
+}
+.wd-points {
+  position: absolute;
+  right: 6px;
+  top: -12px;
+  font-family: var(--font-heading);
+  font-weight: 700;
+  font-size: 0.8rem;
+  color: var(--success);
+  animation: wd-pop 1.2s ease-out both;
+}
+.wd-score { margin: 18px auto 0; max-width: 420px; }
+.wd-score-label, .wd-score-note { font-size: 0.75rem; color: var(--text-secondary); }
+.wd-score-note { color: var(--text-muted); margin-top: 4px; }
+.wd-score-track {
+  position: relative;
+  height: 10px;
+  border-radius: 5px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  margin-top: 6px;
+}
+.wd-score-fill {
+  height: 100%;
+  width: 12%;
+  border-radius: 5px;
+  background: var(--primary);
+  transition: width 1s ease-out 0.4s;
+}
+.welcome-demo[data-step="3"] .wd-score-fill { width: 24%; background: var(--success); }
+.wd-score-share {
+  position: absolute;
+  top: -4px;
+  bottom: -4px;
+  left: 25%;
+  width: 2px;
+  background: var(--text-secondary);
+}
+.wd-caption {
+  text-align: center;
+  color: var(--text);
+  font-size: 1.05rem;
+  min-height: 3em;
+  margin: 16px auto 0;
+  max-width: 620px;
+}
+.wd-controls { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 8px; }
+.wd-dot {
+  width: 10px;
+  height: 10px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid var(--primary);
+  background: transparent;
+  cursor: pointer;
+}
+.wd-dot.active { background: var(--primary); }
+.wd-pause { margin-left: 8px; }
+
+/* Reduced motion: the four steps as a static row */
+.welcome-steps-static {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+}
+.wd-panel {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 14px;
+}
+.wd-panel .wd-caption { font-size: 0.9rem; min-height: 0; margin-top: 10px; text-align: left; }
+.wd-panel .wd-submit, .wd-panel .wd-points, .wd-panel .wd-avatar { animation: none; }
+.wd-panel .wd-points { position: static; display: block; margin-top: 6px; }
+.wd-panel-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-heading);
+  color: var(--primary);
+  font-size: 0.8rem;
+  margin-bottom: 10px;
+}
+.wd-panel-num {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1px solid var(--primary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.welcome-features {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+}
+.welcome-feature {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 20px;
+  text-align: center;
+}
+.welcome-feature-icon { font-size: 1.8rem; margin-bottom: 8px; }
+.welcome-feature h3 { font-family: var(--font-heading); color: var(--primary); font-size: 0.95rem; margin-bottom: 6px; }
+.welcome-feature p { color: var(--text-secondary); font-size: 0.95rem; }
+.welcome-bottom { text-align: center; }
+
+.auth-demo-link {
+  display: block;
+  text-align: center;
+  margin-top: 20px;
+  font-size: 0.85rem;
+  color: var(--primary);
+  text-decoration: none;
+}
+.auth-demo-link:hover { text-decoration: underline; }
+
+@keyframes wd-appear { from { opacity: 0; transform: scale(0.85); } to { opacity: 1; transform: scale(1); } }
+@keyframes wd-pulse { 0%, 100% { box-shadow: 0 0 0 0 var(--primary-glow); } 50% { box-shadow: 0 0 0 6px var(--primary-glow); } }
+@keyframes wd-pop { 0% { opacity: 0; transform: translateY(6px) scale(0.8); } 30% { opacity: 1; transform: translateY(-4px) scale(1.1); } 100% { opacity: 1; transform: translateY(-8px) scale(1); } }
+
+/* ═══════════════════════════════════════════
+   D6: BOARD TUTORIAL (coach marks), drag handle, empty hints
+   ═══════════════════════════════════════════ */
+.tour-overlay { position: fixed; inset: 0; z-index: 10000; }
+/* Covers the page so nothing behind the tour can be clicked or dragged */
+.tour-blocker { position: absolute; inset: 0; background: transparent; }
+.tour-blocker.tour-dim { background: rgba(0, 0, 0, 0.6); }
+.tour-highlight {
+  position: fixed;
+  border-radius: var(--radius-lg);
+  border: 2px solid var(--primary);
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.6), 0 0 24px var(--primary-glow);
+  pointer-events: none;
+  transition: top 0.25s ease, left 0.25s ease, width 0.25s ease, height 0.25s ease;
+}
+.tour-highlight[hidden] { display: none; }
+.tour-popup {
+  position: fixed;
+  width: min(340px, calc(100vw - 32px));
+  background: var(--bg-surface);
+  border: 1px solid var(--border-focus);
+  border-radius: var(--radius-lg);
+  padding: 16px 18px;
+  box-shadow: var(--shadow-lg);
+  color: var(--text);
+  backdrop-filter: blur(20px);
+}
+.tour-popup:focus { outline: none; }
+.tour-progress { font-size: 0.7rem; color: var(--text-muted); font-family: var(--font-heading); letter-spacing: 0.05em; }
+.tour-title { font-family: var(--font-heading); color: var(--primary); font-size: 1rem; margin: 4px 0 6px; }
+.tour-text { font-size: 0.95rem; line-height: 1.4; color: var(--text); }
+.tour-actions { display: flex; align-items: center; gap: 8px; margin-top: 14px; }
+.tour-spacer { flex: 1; }
+.tour-demo { margin-top: 12px; }
+
+/* Mini drag-and-drop demo: a ghost card carried one column over */
+.tour-dnd {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  height: 92px;
+}
+.tour-dnd-col {
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  font-family: var(--font-heading);
+  padding: 4px 6px;
+}
+.tour-dnd-card, .tour-dnd-hand { position: absolute; animation-duration: 2.6s; animation-iteration-count: infinite; animation-timing-function: ease-in-out; }
+.tour-dnd-card {
+  top: 26px;
+  left: 6%;
+  width: 38%;
+  height: 44px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-card-hover);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--primary);
+  animation-name: tour-dnd-card;
+}
+.tour-dnd-grip { position: absolute; top: 4px; right: 6px; font-size: 0.7rem; color: var(--text-muted); }
+.tour-dnd-hand { top: 44px; left: 32%; font-size: 1.2rem; animation-name: tour-dnd-hand; }
+@keyframes tour-dnd-card {
+  0%, 15%   { transform: translateX(0) rotate(0); box-shadow: none; }
+  25%       { transform: translateX(0) translateY(-4px) rotate(2deg); box-shadow: var(--shadow-lg); }
+  65%       { transform: translateX(132%) translateY(-4px) rotate(2deg); box-shadow: var(--shadow-lg); }
+  75%, 100% { transform: translateX(132%) rotate(0); box-shadow: none; }
+}
+@keyframes tour-dnd-hand {
+  0%, 15% { transform: translateX(0) scale(1); opacity: 1; }
+  25%     { transform: translateX(0) scale(0.9); }
+  65%     { transform: translateX(132%) scale(0.9); }
+  75%     { transform: translateX(132%) scale(1); opacity: 1; }
+  100%    { transform: translateX(132%) scale(1); opacity: 0; }
+}
+
+.btn-board-tour { min-width: 32px; font-weight: 700; }
+
+.task-card.draggable { cursor: grab; }
+.task-card.draggable:active { cursor: grabbing; }
+.drag-handle {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  letter-spacing: -2px;
+  line-height: 1;
+  padding: 2px 4px;
+  cursor: grab;
+  user-select: none;
+}
+.task-card.draggable:hover .drag-handle { color: var(--primary); }
+.column-empty-hint {
+  padding: 20px 12px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-lg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wd-board .wd-card, .wd-score-fill, .tour-highlight { transition: none; }
+  .wd-card-moving, .wd-avatar, .wd-submit, .wd-points, .tour-dnd-card, .tour-dnd-hand { animation: none; }
+}

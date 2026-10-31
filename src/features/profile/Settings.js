@@ -11,6 +11,7 @@ import {
   initTheme, setColorTheme, setBoardTheme, getColorTheme, getBoardTheme, getTerm 
 } from '../../services/themeService.js';
 import { ICONS } from '../../assets/icons/icons.js';
+import { clearTourFlags } from '../tasks/boardTour.js';
 
 const DEFAULT_AVATARS = [
   '🧙', '🗡️', '🛡️', '🏹', '⚗️', '🐉', '🦅', '🌟', '🎯', '💎'
@@ -210,6 +211,18 @@ export async function renderSettings() {
         </div>
       </div>
 
+      <!-- Tutorials (D6) -->
+      <div class="settings-section">
+        <h2 class="settings-section-title">🧭 Tutorials</h2>
+
+        <div class="settings-card">
+          <div class="settings-toggle-row">
+            <span>Show the task board tutorial again the next time you open a board</span>
+            <button class="btn btn-secondary btn-sm" id="btn-replay-tutorials">Replay tutorials</button>
+          </div>
+        </div>
+      </div>
+
       <!-- Section D: Privacy & Data -->
       <div class="settings-section">
         <h2 class="settings-section-title">🔒 Privacy & Data</h2>
@@ -235,6 +248,12 @@ export async function renderSettings() {
   // ── Event Bindings ──
 
   document.getElementById('btn-settings-back').addEventListener('click', () => navigate('#/dashboard'));
+
+  // Replay tutorials: only clears this user's local "seen" flags
+  document.getElementById('btn-replay-tutorials').addEventListener('click', () => {
+    clearTourFlags(user.uid);
+    showSettingsToast('The board tutorial will show again the next time you open a board.');
+  });
 
   // Avatar upload
   document.getElementById('avatar-upload').addEventListener('change', async (e) => {

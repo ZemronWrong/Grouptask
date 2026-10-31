@@ -6,6 +6,7 @@ import { startSync, stopSync, setRemoteChangeCallback, fetchGroupDataOnce } from
 import { initConnectionStatus } from './services/connectionStatus.js';
 import { renderLogin } from './features/auth/LoginPage.js';
 import { renderRegister } from './features/auth/RegisterPage.js';
+import { renderWelcome } from './features/auth/WelcomePage.js';
 import { renderDashboard } from './features/dashboard/Dashboard.js';
 import { renderTaskBoard, resetBoardState, refreshBoard } from './features/tasks/TaskBoard.js';
 import { renderLeaderboard, renderEvaluation } from './features/dashboard/Leaderboard.js';
@@ -41,6 +42,7 @@ export async function boot() {
   await openDB();
   initConnectionStatus();
 
+  addRoute('/welcome', guestOnly(renderWelcome));
   addRoute('/login', guestOnly(renderLogin));
   addRoute('/register', guestOnly(renderRegister));
   addRoute('/dashboard', requireAuth(renderDashboard));
@@ -76,11 +78,12 @@ export async function boot() {
   }));
 
   onAuthChange(async (user) => {
-    const path = window.location.hash.slice(1) || '/login';
-    if (!user && path !== '/login' && path !== '/register') {
+    const path = window.location.hash.slice(1) || '/welcome';
+    const guestPaths = ['/welcome', '/login', '/register'];
+    if (!user && !guestPaths.includes(path)) {
       stopSync();
       navigate('#/login');
-    } else if (user && (path === '/login' || path === '/register' || path === '')) {
+    } else if (user && (guestPaths.includes(path) || path === '')) {
       // Bootstrap data from Firestore for users on a new/fresh device
       await bootstrapUserData(user.uid);
       navigate('#/dashboard');

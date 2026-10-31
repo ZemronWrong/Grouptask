@@ -38,6 +38,7 @@ export function renderRegister() {
           ${ICONS.google}
           Continue with Google
         </button>
+        <a class="auth-demo-link" href="#/welcome">▶ Watch how it works</a>
       </div>
     </div>
   `;
