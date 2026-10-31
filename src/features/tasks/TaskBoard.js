@@ -5,7 +5,7 @@
  *   - Fetch all data required for the board view.
  *   - Compose HTML from TaskCard, TaskModal, and column templates.
  *   - Bind delegated events once via boardEvents.
- *   - Initialise drag-and-drop for admins.
+ *   - Initialise drag-and-drop for every non-viewer.
  *
  * Business logic (save, move, review, notify) lives in boardEvents.js.
  * HTML templates live in TaskCard.js and TaskModal.js.
@@ -26,7 +26,8 @@ import {
   proofReviewModalHTML,
   proofSubmitModalHTML,
 } from './TaskModal.js';
-import { bindBoardEvents, moveTask } from './boardEvents.js';
+import { bindBoardEvents, moveTask, openProofSubmitModal, openProofReviewModal } from './boardEvents.js';
+import { dropBlockReason } from './taskPermissions.js';
 
 // ── Module-level state (preserved across re-renders within the same session) ──
 let currentGroupId      = null;
@@ -156,7 +157,7 @@ export async function renderTaskBoard(groupId) {
           </div>
 
           <!-- Completed side panel -->
-          <aside class="completed-panel" id="completed-panel">
+          <aside class="completed-panel" id="completed-panel" data-status="done">
             <div class="column-header" style="margin-bottom:12px;">
               <span class="column-icon">${STATUSES.find(s => s.key === 'done')?.icon || ''}</span>
               <span class="column-title">Completed</span>
@@ -183,7 +184,7 @@ export async function renderTaskBoard(groupId) {
   `;
 
   // Update the shared context that delegated handlers read
-  Object.assign(_boardContext, { groupId, members, group, viewIsAdmin: isAdmin, me, proofs: groupProofs, profileMap });
+  Object.assign(_boardContext, { groupId, members, group, tasks, viewIsAdmin: isAdmin, me, proofs: groupProofs, profileMap });
 
   // Wire the separate share button (not the avatar stack)
   document.getElementById('btn-share-btn')?.addEventListener('click', () => {
@@ -196,10 +197,18 @@ export async function renderTaskBoard(groupId) {
     boardEventsInitialised = true;
   }
 
-  if (isAdmin && !dragDropInitialised) {
+  // D5: drag and drop for everyone except viewers. moveTask checks the role at
+  // drop time; dropping into Pending Approval / Completed opens the same modal
+  // as the SUBMIT / REVIEW APPROVAL buttons instead of moving the card.
+  if (me && me.role !== 'viewer' && !dragDropInitialised) {
     initDragDrop(async (taskId, newStatus) => {
-      await moveTask(taskId, newStatus, _boardContext.groupId, _boardContext.members);
+      const next = await moveTask(taskId, newStatus, _boardContext.groupId, _boardContext.members);
       await renderTaskBoard(_boardContext.groupId);
+      if (next === 'submit') openProofSubmitModal(taskId);
+      if (next === 'review') openProofReviewModal(taskId, _boardContext.proofs);
+    }, (taskId, status) => {
+      const task = _boardContext.tasks?.find((t) => t.id === taskId);
+      return dropBlockReason(task, _boardContext.me, status);
     });
     dragDropInitialised = true;
   }

@@ -1084,10 +1084,38 @@ textarea { resize: vertical; }
   display: flex;
   flex-direction: column;
 }
-.kanban-column.drag-over {
+.kanban-column.drag-over,
+.completed-panel.drag-over {
   background: var(--primary-soft);
   border-radius: var(--radius-lg);
   border: 1px dashed var(--primary);
+}
+/* D5: while dragging, show where this card can and can't be dropped */
+.kanban-wrapper.is-dragging .drop-allowed {
+  outline: 2px dashed var(--primary);
+  outline-offset: 4px;
+  border-radius: var(--radius-lg);
+}
+.kanban-wrapper.is-dragging .completed-panel.drop-allowed { outline-offset: -4px; }
+.kanban-wrapper.is-dragging .drop-blocked { position: relative; }
+/* Dim the contents, not the column itself, so the label stays readable */
+.kanban-wrapper.is-dragging .drop-blocked > * { opacity: 0.45; }
+.kanban-wrapper.is-dragging .drop-blocked[data-drop-label]::before {
+  content: attr(data-drop-label);
+  position: absolute;
+  top: 48px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2;
+  padding: 4px 10px;
+  border-radius: 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+  pointer-events: none;
 }
 .column-header {
   display: flex;

@@ -105,10 +105,11 @@ service cloud.firestore {
 
     // ── Tasks ────────────────────────────────────────────────────────
     // Read:   any group member.
-    // Create: any group member, but initial status must not be 'done' —
+    // Create: owner/co-admin only (D1), and initial status must not be 'done' —
     //         tasks must go through the approval workflow.
     // Update: assignee can move their own card to todo/in-progress/pending-approval.
-    //         Only owner/co-admin can set status='done' or change task weight.
+    //         Only owner/co-admin can set status='done' or change task weight,
+    //         and never on a task assigned to themselves (B4, D2).
     // Delete: only group admin.
     //
     // NOTE: weight is locked after creation — only admins may change it to
@@ -117,7 +118,9 @@ service cloud.firestore {
       allow read: if isAuthed() &&
         isMemberOfGroup(resource.data.groupId);
 
+      // D1: only admins create tasks (the "Add task" button is admin-only too)
       allow create: if isWritingToOwnGroup() &&
+        isGroupAdmin(request.resource.data.groupId) &&
         request.resource.data.status != 'done';
 
       allow update: if isAuthed() && isMemberOfGroup(resource.data.groupId) && (
@@ -125,6 +128,15 @@ service cloud.firestore {
         (isGroupAdmin(resource.data.groupId) && (
           request.resource.data.status != 'done' ||
           resource.data.assignedTo != (resource.data.groupId + '_' + request.auth.uid)
+        ) &&
+        // D2: ...and cannot change the weight of a task assigned to themselves
+        // (before or after this write); the other admin makes that change.
+        (
+          request.resource.data.weight == resource.data.weight ||
+          (
+            resource.data.assignedTo != (resource.data.groupId + '_' + request.auth.uid) &&
+            request.resource.data.assignedTo != (resource.data.groupId + '_' + request.auth.uid)
+          )
         )) ||
         (
           // Members may update if they are ALREADY the assignee, OR they are self-assigning an unassigned task

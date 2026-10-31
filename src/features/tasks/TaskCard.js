@@ -5,6 +5,7 @@
 
 import { escapeHtml, formatRelative } from '../../utils/helpers.js';
 import { getTerm } from '../../services/themeService.js';
+import { canDragTask } from './taskPermissions.js';
 
 /**
  * Returns the HTML string for a single task card.
@@ -19,6 +20,8 @@ export function taskCardHTML(task, members, proofs, comments, viewIsAdmin, me, p
   const proof = proofs.find((p) => p.taskId === task.id);
   const commentCount = comments.filter((c) => c.taskId === task.id && !c.deleted).length;
   const isMyCard = !viewIsAdmin && assignee?.id === me?.id;
+  // D5: only cards this person can actually move pick up on drag
+  const canDrag = canDragTask(task, me);
 
   let proofBadge = '';
   if (task.status === 'pending-approval') {
@@ -74,7 +77,7 @@ export function taskCardHTML(task, members, proofs, comments, viewIsAdmin, me, p
     : '';
 
   return `
-    <div class="task-card ${viewIsAdmin ? 'draggable' : ''}" ${viewIsAdmin ? 'draggable="true"' : ''} data-task-id="${task.id}">
+    <div class="task-card ${canDrag ? 'draggable' : ''}" ${canDrag ? 'draggable="true"' : ''} data-task-id="${task.id}">
       <div class="task-card-top">
         <div class="task-badges">
           <span class="badge ${diffClass}">${escapeHtml(task.difficulty || 'MEDIUM')}</span>

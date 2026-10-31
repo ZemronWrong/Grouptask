@@ -18,6 +18,7 @@ import { renderAchievementPopup } from './TaskCard.js';
 import { recordEvent, EVENT_TYPES } from '../../core/eventEngine.js';
 import { awardEligibleBadgesForUser } from '../../core/badgeEngine.js';
 import { openMemberPopup } from './TaskComments.js';
+import { dropBlockReason, isAdminMember } from './taskPermissions.js';
 
 function showToast(msg) {
   const t = document.createElement('div');
@@ -25,6 +26,33 @@ function showToast(msg) {
   t.textContent = msg;
   document.body.appendChild(t);
   setTimeout(() => t.remove(), 2500);
+}
+
+/** Open the 🚀 SUBMIT proof modal for a task (SUBMIT button or drop into Pending Approval). */
+export function openProofSubmitModal(taskId) {
+  const modal = document.getElementById('proof-submit-modal');
+  if (!modal) return;
+  document.getElementById('submit-task-id').value = taskId;
+  document.getElementById('submit-proof-link').value = '';
+  modal.hidden = false;
+}
+
+/** Open the REVIEW APPROVAL modal for a task (review button or drop into Completed). */
+export function openProofReviewModal(taskId, proofs) {
+  const modal = document.getElementById('proof-review-modal');
+  if (!modal) return;
+  const proof = proofs?.find((p) => p.taskId === taskId);
+  document.getElementById('review-proof-id').value = proof?.id || '';
+  document.getElementById('review-task-id').value  = taskId;
+  document.getElementById('review-note').value     = '';
+  if (proof?.link) {
+    document.getElementById('proof-link-group').hidden = false;
+    document.getElementById('review-proof-link').href  = proof.link;
+    document.getElementById('review-proof-link').textContent = proof.link;
+  } else {
+    document.getElementById('proof-link-group').hidden = true;
+  }
+  modal.hidden = false;
 }
 
 // ── Public: wire all board event listeners (call once per session) ────────────
@@ -222,9 +250,7 @@ export function bindBoardEvents(boardContext, rerenderBoard) {
     const submitProofBtn = e.target.closest('.btn-submit-proof');
     if (submitProofBtn) {
       e.stopPropagation();
-      document.getElementById('submit-task-id').value = submitProofBtn.dataset.taskId;
-      document.getElementById('submit-proof-link').value = '';
-      document.getElementById('proof-submit-modal').hidden = false;
+      openProofSubmitModal(submitProofBtn.dataset.taskId);
       return;
     }
 
@@ -232,20 +258,7 @@ export function bindBoardEvents(boardContext, rerenderBoard) {
     const reviewBtn = e.target.closest('.btn-review-proof');
     if (reviewBtn) {
       e.stopPropagation();
-      const proofId = reviewBtn.dataset.proofId;
-      const taskId  = reviewBtn.dataset.taskId;
-      const proof   = proofs?.find((p) => p.id === proofId);
-      document.getElementById('review-proof-id').value = proofId || '';
-      document.getElementById('review-task-id').value  = taskId;
-      document.getElementById('review-note').value     = '';
-      if (proof?.link) {
-        document.getElementById('proof-link-group').hidden = false;
-        document.getElementById('review-proof-link').href  = proof.link;
-        document.getElementById('review-proof-link').textContent = proof.link;
-      } else {
-        document.getElementById('proof-link-group').hidden = true;
-      }
-      document.getElementById('proof-review-modal').hidden = false;
+      openProofReviewModal(reviewBtn.dataset.taskId, proofs);
       return;
     }
 
@@ -425,6 +438,14 @@ export async function saveTask(groupId, members) {
   const assignedTo = isAdminEdit ? assignedToRaw : (oldTask?.assignedTo ?? assignedToRaw);
   const status     = isAdminEdit ? statusRaw    : (oldTask?.status ?? statusRaw);
 
+  // D2: an admin can't change the weight of a task assigned to themselves (the
+  // rules reject it), so keep the old weight instead of queueing a doomed write.
+  let weight = isAdminEdit ? (Number(document.getElementById('task-weight-input').value) || 100) : (oldTask?.weight || 100);
+  if (oldTask && weight !== oldTask.weight && me?.id && (oldTask.assignedTo === me.id || assignedTo === me.id)) {
+    weight = oldTask.weight;
+    showToast("You can't change the weight of your own task. Ask the other admin to change it.");
+  }
+
   const task = {
     id, groupId,
     title:       document.getElementById('task-title-input').value.trim(),
@@ -432,7 +453,7 @@ export async function saveTask(groupId, members) {
     difficulty:  isAdminEdit ? (document.getElementById('task-diff-input').value) : (oldTask?.difficulty || 'medium'),
     type:        isAdminEdit ? (document.getElementById('task-type-input')?.value || 'task') : (oldTask?.type || 'task'),
     tags:        isAdminEdit ? [document.getElementById('task-type-input')?.value || 'task'] : (oldTask?.tags || ['task']),
-    weight:      isAdminEdit ? (Number(document.getElementById('task-weight-input').value) || 100) : (oldTask?.weight || 100),
+    weight,
     deadline:    isAdminEdit ? (document.getElementById('task-deadline-input').value || null) : (oldTask?.deadline ?? null),
     assignedTo, status,
     updatedAt: Date.now(),
@@ -510,83 +531,67 @@ export async function saveTask(groupId, members) {
   }
 }
 
-/** Move a task to a new status column (called by drag-drop). */
+/**
+ * Move a task to a new status column (called by drag-drop).
+ *
+ * Returns what the board should do next:
+ *   'submit' — member dropped into Pending Approval: open the SUBMIT proof modal
+ *              (the card only moves when they confirm; cancel leaves it in place).
+ *   'review' — admin dropped into Completed: open the REVIEW APPROVAL modal, so
+ *              approval always goes through handleReview.
+ *   null     — the card was moved, or the move was refused (with a toast).
+ */
 export async function moveTask(taskId, newStatus, groupId, members) {
   const task = await get(STORES.TASKS, taskId);
-  if (!task || task.status === newStatus) return;
+  if (!task || task.status === newStatus) return null;
 
-  const user   = currentUser();
-  const me     = members.find((m) => m.uid === user?.uid);
-  const isAdmin = me?.role === 'owner' || me?.role === 'co-admin';
-  const isMyCard = task.assignedTo === me?.id;
+  const user    = currentUser();
+  const me      = members.find((m) => m.uid === user?.uid);
+  const isAdmin = isAdminMember(me);
 
-  // ── Permission rules (enforced client-side; Firestore rules back this up) ──
-  // 1. Members can move their own cards freely between todo ↔ in-progress.
-  // 2. Any member can move their own card TO pending-approval (this is how
-  //    they submit for review; mirrors the "Submit Proof" button).
-  // 3. Only owner/co-admin can move a card directly to 'done' (approval bypass).
-  // 4. Admins can move any card to any status.
-
-  if (!isAdmin) {
-    // Non-admin trying to approve directly to done
-    if (newStatus === 'done') {
-      showToast('Only an admin can approve tasks. Use "Submit for Approval" instead.');
-      return;
-    }
-    // Non-admin trying to move someone else's card
-    if (!isMyCard && newStatus !== 'todo') {
-      showToast('You can only move your own tasks.');
-      return;
-    }
-  } else {
-    // B4: Admin cannot approve their own card to done
-    if (newStatus === 'done' && isMyCard) {
-      showToast('Admins cannot approve their own tasks. Another admin must approve this.');
-      return;
-    }
+  // ── Permission rules (taskPermissions.js; Firestore rules back this up) ──
+  // Members move their own To Do / In Progress cards, and take an unassigned
+  // To Do card by dragging it to In Progress. Nobody but an admin who isn't the
+  // assignee can approve to Completed. Viewers can't move anything.
+  const blocked = dropBlockReason(task, me, newStatus);
+  if (blocked) {
+    showToast(blocked.message);
+    return null;
   }
+  if (newStatus === 'done') return 'review';
+  if (!isAdmin && newStatus === 'pending-approval') return 'submit';
 
   const oldStatus = task.status;
+  const accepting = !isAdmin && !task.assignedTo;
+  if (accepting) task.assignedTo = me.id;  // same as the Accept button
   task.status    = newStatus;
   task.updatedAt = Date.now();
-  if (newStatus === 'done') task.completedAt = Date.now();
   await put(STORES.TASKS, task);
   await addToSyncQueue({ collection: 'tasks', docId: taskId, operation: 'update', data: task });
 
   const STATUS_LABELS = { 'todo': 'To Do', 'in-progress': 'In Progress', 'pending-approval': 'Pending Approval', 'done': 'Completed' };
 
-  await logActivity({
-    groupId, type: newStatus === 'done' ? 'task_completed' : 'task_moved',
+  await logActivity(accepting ? {
+    groupId, type: 'task_assigned',
+    actorId: me?.id || null, actorName: me?.displayName || 'Someone',
+    description: `${me?.displayName || 'Someone'} self-assigned "${task.title}"`,
+    meta: { taskId, taskTitle: task.title },
+  } : {
+    groupId, type: 'task_moved',
     actorId: me?.id || null, actorName: me?.displayName || 'Someone',
     description: `Moved "${task.title}" from ${STATUS_LABELS[oldStatus] || oldStatus} → ${STATUS_LABELS[newStatus] || newStatus}`,
     meta: { taskId, taskTitle: task.title, oldStatus, newStatus },
   });
 
+  // Only an admin's drop reaches here for pending-approval (members go via the modal)
   if (newStatus === 'pending-approval') {
-    const admins = members.filter((m) => m.role === 'owner' || m.role === 'co-admin');
+    const admins = members.filter((m) => isAdminMember(m));
     for (const a of admins) {
       await notify({ uid: a.uid, type: 'approval_request', title: 'Approval Requested',
         message: `A task needs approval: "${task.title}"`, icon: '⏳', actionLink: `#/group/${groupId}`, groupId });
     }
-  } else if (newStatus === 'done' && oldStatus !== 'done') {
-    const assignee = members.find((m) => m.id === task.assignedTo);
-    if (assignee) {
-      await notify({ uid: assignee.uid, type: 'approval_granted', title: 'Task Completed! 🎉',
-        message: `Your task "${task.title}" was marked complete.`, icon: '✅', actionLink: `#/group/${groupId}`, groupId });
-      const weight = Number(task.weight) || 100;
-      await recordEvent({
-        eventType: EVENT_TYPES.CARD_COMPLETE,
-        userId: assignee.uid,
-        memberId: assignee.id,
-        boardId: groupId,
-        boardPoints: weight,
-        xpDelta: weight,
-        repDelta: 5,
-        metadata: { taskId, taskTitle: task.title, weight }
-      });
-      await awardEligibleBadgesForUser(assignee.uid);
-    }
   }
+  return null;
 }
 
 // ── Proof review ──────────────────────────────────────────────────────────────
