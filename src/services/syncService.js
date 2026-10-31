@@ -18,7 +18,7 @@ import {
   serverTimestamp,
 } from 'firebase/firestore';
 import { fsDb, isMock } from '../config/firebaseConfig.js';
-import { STORES, put, remove, getSyncQueue, removeSyncQueueItem, get } from './indexedDBService.js';
+import { STORES, put, remove, getSyncQueue, removeSyncQueueItem, removeSyncQueueItemIfUnchanged, get } from './indexedDBService.js';
 import { resolveConflict } from './conflictResolver.js';
 import { signalSyncing, signalSynced } from './connectionStatus.js';
 
@@ -159,6 +159,46 @@ function normalizeTimestamps(doc) {
   return result;
 }
 
+/** JSON with sorted keys and undefined fields dropped, so equal docs compare equal. */
+function stableStringify(value) {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value) ?? 'null';
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`;
+  return `{${Object.keys(value)
+    .filter((k) => value[k] !== undefined)
+    .sort()
+    .map((k) => `${JSON.stringify(k)}:${stableStringify(value[k])}`)
+    .join(',')}}`;
+}
+
+/**
+ * E3: write one remote document into IndexedDB if it is a real change.
+ * Returns the document id when IndexedDB changed, otherwise null:
+ *   - our own local writes echoing back (hasPendingWrites) are skipped;
+ *   - the remote copy must win last-write-wins and differ from the local copy
+ *     (so the initial snapshot after fetchGroupDataOnce changes nothing).
+ */
+async function applyRemoteDoc(storeName, docSnap, removed = false) {
+  if (docSnap.metadata?.hasPendingWrites) return null;
+  const id = docSnap.id;
+  const localDoc = await get(storeName, id).catch(() => null);
+  if (removed) {
+    if (!localDoc) return null;
+    await remove(storeName, id).catch(() => {});
+    return id;
+  }
+  const remoteDoc = normalizeTimestamps({ id, ...docSnap.data() });
+  const { winner, doc } = resolveConflict(localDoc, remoteDoc);
+  if (winner !== 'remote' || !doc) return null;
+  if (localDoc && stableStringify(localDoc) === stableStringify(doc)) return null;
+  await put(storeName, doc);
+  return id;
+}
+
+/** Tell the active screen which documents changed (only when something did). */
+function signalRemoteChange(collection, ids) {
+  if (ids.length > 0 && typeof onRemoteChange === 'function') onRemoteChange({ collection, ids });
+}
+
 function listenForChanges(groupId) {
   // B5: events use 'boardId'; all others use 'groupId'. Bug fix: 'comments' was missing.
   const colListeners = [
@@ -175,22 +215,13 @@ function listenForChanges(groupId) {
 
   for (const { colName, field } of colListeners) {
     const q = query(fsCollection(fsDb, colName), where(field, '==', groupId));
-    const unsub = onSnapshot(q, (snapshot) => {
-      snapshot.docChanges().forEach(async (change) => {
-        const remoteDoc = normalizeTimestamps({ id: change.doc.id, ...change.doc.data() });
-        const storeName = storeForCollection(colName);
-
-        if (change.type === 'removed') {
-          await remove(storeName, remoteDoc.id).catch(() => {});
-        } else {
-          const localDoc = await get(storeName, remoteDoc.id).catch(() => null);
-          const { winner, doc } = resolveConflict(localDoc, remoteDoc);
-          if (winner === 'remote' && doc) {
-            await put(storeName, doc);
-          }
-        }
-      });
-      if (typeof onRemoteChange === 'function') onRemoteChange();
+    const storeName = storeForCollection(colName);
+    const unsub = onSnapshot(q, async (snapshot) => {
+      // E3: wait for every IndexedDB write before signalling, then signal once
+      const ids = await Promise.all(snapshot.docChanges().map((change) =>
+        applyRemoteDoc(storeName, change.doc, change.type === 'removed')
+      ));
+      signalRemoteChange(colName, ids.filter(Boolean));
     }, (err) => {
       console.warn(`[Sync] Listener error on ${colName}:`, err.message);
     });
@@ -199,15 +230,9 @@ function listenForChanges(groupId) {
 
   // Also listen to the group document itself (stores joinRequests, name, etc.)
   const groupUnsub = onSnapshot(fsDoc(fsDb, 'groups', groupId), async (docSnap) => {
-    if (docSnap.exists()) {
-      const remoteGroup = normalizeTimestamps({ id: docSnap.id, ...docSnap.data() });
-      const localGroup = await get(STORES.GROUPS, groupId).catch(() => null);
-      const { winner, doc } = resolveConflict(localGroup, remoteGroup);
-      if (winner === 'remote' && doc) {
-        await put(STORES.GROUPS, doc);
-      }
-    }
-    if (typeof onRemoteChange === 'function') onRemoteChange();
+    if (!docSnap.exists()) return;
+    const id = await applyRemoteDoc(STORES.GROUPS, docSnap);
+    signalRemoteChange('groups', id ? [id] : []);
   }, (err) => {
     console.warn('[Sync] Group document listener error:', err.message);
   });
@@ -219,18 +244,11 @@ function listenForChanges(groupId) {
     .then((membersSnap) => {
       const uids = [...new Set(membersSnap.docs.map((d) => d.data().uid).filter(Boolean))];
       for (const uid of uids) {
+        // B8: applyRemoteDoc normalizes Timestamps, so remote profile changes win LWW correctly.
         const profileUnsub = onSnapshot(fsDoc(fsDb, 'userProfiles', uid), async (docSnap) => {
-          if (docSnap.exists()) {
-            // B8 fix: normalizeTimestamps was missing here — same Timestamp-vs-number bug
-            // that was fixed for all other collections but was overlooked for userProfiles.
-            const remoteProfile = normalizeTimestamps({ id: docSnap.id, ...docSnap.data() });
-            const localProfile = await get(STORES.USER_PROFILES, uid).catch(() => null);
-            const { winner, doc } = resolveConflict(localProfile, remoteProfile);
-            if (winner === 'remote' && doc) {
-              await put(STORES.USER_PROFILES, doc);
-              if (typeof onRemoteChange === 'function') onRemoteChange();
-            }
-          }
+          if (!docSnap.exists()) return;
+          const id = await applyRemoteDoc(STORES.USER_PROFILES, docSnap);
+          signalRemoteChange('userProfiles', id ? [id] : []);
         }, (err) => {
           console.warn(`[Sync] userProfile listener error for ${uid}:`, err.message);
         });
@@ -302,8 +320,8 @@ export async function flushQueue() {
           if ('updatedAt' in data && data.updatedAt != null) data.updatedAt = serverTimestamp();
           await setDoc(ref, data, { merge: true });
         }
-        await removeSyncQueueItem(entry.id);
-        announce('sync-flushed', entry);
+        // E3: if newer edits were merged into this entry while it uploaded, it stays queued
+        if (await removeSyncQueueItemIfUnchanged(entry)) announce('sync-flushed', entry);
       } catch (err) {
         console.warn('[Sync] Failed to push entry:', err.message);
         // "Poison Pill" Prevention:
@@ -317,8 +335,8 @@ export async function flushQueue() {
           'not-found', 'already-exists', 'unauthenticated',
         ]);
         if (PERMANENT_ERRORS.has(err.code)) {
-          console.error(`[Sync] Permanent rejection (${err.code}). Removing invalid item from queue to prevent deadlock.`);
-          await removeSyncQueueItem(entry.id);
+          console.error(`[Sync] Permanent rejection (${err.code}) of ${entry.operation} ${entry.collection}/${entry.docId}. Dropped from the queue; it will not be retried.`, entry.data);
+          await removeSyncQueueItemIfUnchanged(entry);
           announce('sync-rejected', entry, { code: err.code });
         } else {
           // Transient error (e.g. network drop mid-flight). Break and retry later.

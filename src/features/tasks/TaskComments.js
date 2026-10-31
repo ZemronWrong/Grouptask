@@ -27,13 +27,8 @@ async function getMemberTopBadge(memberUid, memberIdList) {
 
 /** Build a member mini-profile popup HTML. Called on member avatar/name/badge click. */
 async function buildMemberPopup(member, groupId) {
-  if (member.uid) {
-    try {
-      await awardEligibleBadgesForUser(member.uid);
-    } catch {
-      // ignore
-    }
-  }
+  // E3: opening a popup never writes. Badges are awarded when they are earned
+  // (task approval, posting a comment), not when someone views them.
 
   const allTasks  = await getAllByIndex(STORES.TASKS, 'groupId', groupId);
   const allBadges = await getAll(STORES.BADGES);
@@ -252,6 +247,8 @@ export function bindCommentEvents(taskId, groupId, members, onCommentAdded) {
 
     await add(STORES.COMMENTS, comment);
     await addToSyncQueue({ collection: 'comments', docId: comment.id, operation: 'add', data: comment });
+    // Comment badges are earned here (viewing a popup or profile no longer awards them)
+    await awardEligibleBadgesForUser(me.uid);
 
     // Log comment activity
     const task = await get(STORES.TASKS, taskId).catch(() => null);

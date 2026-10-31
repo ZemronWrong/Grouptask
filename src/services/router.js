@@ -44,7 +44,7 @@ function onHashChange() {
   const path = window.location.hash.slice(1) || '/login';
   const matched = matchRoute(path);
   if (matched) {
-    matched.handler(matched.params);
+    return matched.handler(matched.params);
   } else {
     navigate('#/login');
   }
@@ -55,6 +55,7 @@ export function initRouter() {
   onHashChange();
 }
 
+/** Re-render the current screen; resolves when it has finished rendering. */
 export function reloadCurrentRoute() {
-  onHashChange();
+  return onHashChange();
 }

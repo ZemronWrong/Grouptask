@@ -19,3 +19,27 @@ export function generateInviteCode() {
   }
   return code;
 }
+
+// Scrollable areas whose position is kept when a screen re-renders (E3).
+const SCROLL_AREAS = ['.main-content', '.kanban-wrapper', '.kanban-board', '.column-cards', '.completed-panel', '.leaderboard-container'];
+
+/** Remember the page and panel scroll positions before a re-render. */
+export function captureScroll() {
+  return {
+    x: window.scrollX,
+    y: window.scrollY,
+    areas: SCROLL_AREAS.map((sel) => [...document.querySelectorAll(sel)].map((el) => [el.scrollLeft, el.scrollTop])),
+  };
+}
+
+/** Put the scroll positions from captureScroll() back after a re-render. */
+export function restoreScroll(state) {
+  if (!state) return;
+  SCROLL_AREAS.forEach((sel, i) => {
+    document.querySelectorAll(sel).forEach((el, j) => {
+      const pos = state.areas[i]?.[j];
+      if (pos) { el.scrollLeft = pos[0]; el.scrollTop = pos[1]; }
+    });
+  });
+  window.scrollTo(state.x, state.y);
+}

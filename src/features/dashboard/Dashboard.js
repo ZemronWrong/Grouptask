@@ -10,7 +10,7 @@ import { currentUser, signOut } from '../../services/authService.js';
 import { navigate } from '../../services/router.js';
 import { STORES, get, getAllByIndex, remove, addToSyncQueue } from '../../services/indexedDBService.js';
 import { getMembershipsForUser, createGroup, joinGroupByCode, leaveGroup, sendJoinRequest } from '../../services/memberService.js';
-import { flushQueue } from '../../services/syncService.js';
+import { flushQueue, stopSync } from '../../services/syncService.js';
 import { getGroupTasks } from '../../services/taskService.js';
 import { escapeHtml, formatRelative, formatTimeAgo } from '../../utils/helpers.js';
 import { getTerm } from '../../services/themeService.js';
@@ -373,8 +373,9 @@ async function loadPulse(group, allGroups) {
       await remove(STORES.GROUPS, gId);
       await addToSyncQueue({ collection: 'groups', docId: gId, operation: 'delete' });
       await flushQueue();
+      stopSync();
       navigate('#/dashboard');
-      window.location.reload(); // Refresh to remove from list
+      await renderDashboard(); // E3: re-render the list instead of reloading the page
     }
   });
 
@@ -386,8 +387,9 @@ async function loadPulse(group, allGroups) {
       if (me) {
         await leaveGroup(group.id, me);
       }
+      stopSync();
       navigate('#/dashboard');
-      window.location.reload(); // Refresh to remove from list
+      await renderDashboard(); // E3: re-render the list instead of reloading the page
     }
   });
 

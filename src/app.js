@@ -7,13 +7,14 @@ import { initConnectionStatus } from './services/connectionStatus.js';
 import { renderLogin } from './features/auth/LoginPage.js';
 import { renderRegister } from './features/auth/RegisterPage.js';
 import { renderDashboard } from './features/dashboard/Dashboard.js';
-import { renderTaskBoard, resetBoardState } from './features/tasks/TaskBoard.js';
+import { renderTaskBoard, resetBoardState, refreshBoard } from './features/tasks/TaskBoard.js';
 import { renderLeaderboard, renderEvaluation } from './features/dashboard/Leaderboard.js';
 import { renderMembers } from './features/members/MemberList.js';
 import { renderAudit } from './features/audit/AuditHistory.js';
 import { renderProfile } from './features/profile/Profile.js';
 import { renderSettings } from './features/profile/Settings.js';
 import { bootstrapUserData } from './services/memberService.js';
+import { captureScroll, restoreScroll } from './utils/helpers.js';
 
 function requireAuth(handler) {
   return async (params) => {
@@ -89,13 +90,21 @@ export async function boot() {
     }
   });
 
-  // When Firestore pushes new data to IndexedDB, refresh the active screen
-  let reloadTimeout = null;
+  // ── Remote changes (E3) ──
+  // The sync engine reports { collection, ids } only for documents another
+  // device really changed. Changes are batched (at most one update every
+  // ~400 ms). The board patches just the affected cards; other screens
+  // re-render with their scroll position kept, but not while the user is typing.
+  const REMOTE_DEBOUNCE_MS = 400;
+  // Collections no screen other than the board shows
+  const BOARD_ONLY_COLLECTIONS = new Set(['comments', 'peerReviews', 'peerRatings', 'points']);
+  const pendingChanges = new Map();   // collection -> Set of ids
+  let remoteTimer = null;
   let pendingReload = false;
 
   function hasDirtyInputs() {
     // Check modals
-    if (document.querySelector('.modal-overlay:not([hidden])')) return true;
+    if (document.querySelector('.modal-overlay:not([hidden]), #member-popup-overlay')) return true;
     // Check any focused or non-empty text inputs/textareas not in a committed form
     const inputs = document.querySelectorAll('input[type="text"], input[type="url"], input[type="email"], textarea');
     for (const el of inputs) {
@@ -107,27 +116,52 @@ export async function boot() {
     return false;
   }
 
-  function scheduleReload() {
-    if (reloadTimeout) clearTimeout(reloadTimeout);
-    reloadTimeout = setTimeout(() => {
-      if (hasDirtyInputs()) {
-        // User is actively interacting — mark as pending and retry soon
-        console.info('[App] Remote change deferred: user has unsaved input.');
-        pendingReload = true;
-        return;
-      }
-      pendingReload = false;
-      reloadCurrentRoute();
-    }, 300);
+  async function reloadKeepingScroll() {
+    const scroll = captureScroll();
+    await reloadCurrentRoute();
+    restoreScroll(scroll);
   }
 
-  setRemoteChangeCallback(scheduleReload);
+  async function applyRemoteChanges() {
+    const changes = [...pendingChanges].map(([collection, ids]) => ({ collection, ids: [...ids] }));
+    pendingChanges.clear();
+    const path = window.location.hash.slice(1);
+
+    const board = path.match(/^\/group\/([^/]+)$/);
+    if (board) {
+      await refreshBoard(board[1], changes);
+      return;
+    }
+    if (!pendingReload && changes.every((c) => BOARD_ONLY_COLLECTIONS.has(c.collection))) return;
+    if (hasDirtyInputs()) {
+      // User is actively interacting — mark as pending and retry on blur
+      console.info('[App] Remote change deferred: user has unsaved input.');
+      pendingReload = true;
+      return;
+    }
+    pendingReload = false;
+    await reloadKeepingScroll();
+  }
+
+  function scheduleRemoteChange(change) {
+    if (change?.collection) {
+      if (!pendingChanges.has(change.collection)) pendingChanges.set(change.collection, new Set());
+      change.ids.forEach((id) => pendingChanges.get(change.collection).add(id));
+    }
+    if (remoteTimer) return;  // already scheduled: this change joins the batch
+    remoteTimer = setTimeout(() => {
+      remoteTimer = null;
+      applyRemoteChanges();
+    }, REMOTE_DEBOUNCE_MS);
+  }
+
+  setRemoteChangeCallback(scheduleRemoteChange);
 
   // When the user finishes interacting (blur on inputs), flush any pending reload
   document.addEventListener('blur', () => {
     if (pendingReload && !hasDirtyInputs()) {
       pendingReload = false;
-      reloadCurrentRoute();
+      reloadKeepingScroll();
     }
   }, true);
 

@@ -19,7 +19,6 @@
 import { isFreeloader } from './reputationEngine.js';
 import { BADGE_ICONS } from '../assets/icons/badgeIcons.js';
 import { STORES, getAll, put, addToSyncQueue } from '../services/indexedDBService.js';
-import { generateId } from '../utils/helpers.js';
 import { calculateStreak } from './gamificationEngine.js';
 import { calculateContributionScore } from './scoringEngine.js';
 import { calculateTotalReputation } from './eventEngine.js';
@@ -321,6 +320,15 @@ export function getBadgeById(id) {
  * @param {string} userId - User UID
  * @returns {Promise<Array<object>>} Array of newly awarded badge definitions.
  */
+/**
+ * One document per user and badge (E3). If two devices award the same badge,
+ * they write the same document instead of creating duplicates; the second
+ * write is refused by the rules (badges are immutable) and dropped.
+ */
+export function badgeDocId(userId, badgeId) {
+  return `${userId}_${badgeId}`;
+}
+
 export async function awardEligibleBadgesForUser(userId) {
   if (!userId) return [];
   try {
@@ -371,7 +379,7 @@ export async function awardEligibleBadgesForUser(userId) {
         if (!earnedBadgeTypes.has(b.id)) {
           earnedBadgeTypes.add(b.id);
           const badgeDoc = {
-            id: generateId(),
+            id: badgeDocId(userId, b.id),
             memberId: mm.id,
             groupId: mm.groupId,
             uid: userId,
@@ -398,7 +406,7 @@ export async function awardEligibleBadgesForUser(userId) {
         earnedBadgeTypes.add(b.id);
         const defaultMember = myMembers[0];
         const badgeDoc = {
-          id: generateId(),
+          id: badgeDocId(userId, b.id),
           memberId: defaultMember?.id || userId,
           groupId: defaultMember?.groupId || null,
           uid: userId,
@@ -422,7 +430,7 @@ export async function awardEligibleBadgesForUser(userId) {
         earnedBadgeTypes.add(b.id);
         const defaultMember = myMembers[0];
         const badgeDoc = {
-          id: generateId(),
+          id: badgeDocId(userId, b.id),
           memberId: defaultMember?.id || userId,
           groupId: defaultMember?.groupId || null,
           uid: userId,
@@ -443,7 +451,7 @@ export async function awardEligibleBadgesForUser(userId) {
         earnedBadgeTypes.add(b.id);
         const defaultMember = myMembers[0];
         const badgeDoc = {
-          id: generateId(),
+          id: badgeDocId(userId, b.id),
           memberId: defaultMember?.id || userId,
           groupId: defaultMember?.groupId || null,
           uid: userId,
@@ -464,7 +472,7 @@ export async function awardEligibleBadgesForUser(userId) {
         earnedBadgeTypes.add(b.id);
         const defaultMember = myMembers[0];
         const badgeDoc = {
-          id: generateId(),
+          id: badgeDocId(userId, b.id),
           memberId: defaultMember?.id || userId,
           groupId: defaultMember?.groupId || null,
           uid: userId,

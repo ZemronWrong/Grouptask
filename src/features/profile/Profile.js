@@ -9,7 +9,7 @@ import { navigate } from '../../services/router.js';
 import { getXPLevel, calculateStreak } from '../../core/gamificationEngine.js';
 import { calculateGlobalXP, calculateTotalReputation } from '../../core/eventEngine.js';
 import { getRepProgress, isFreeloader } from '../../core/reputationEngine.js';
-import { getBadgeProgress, getAllBadges, awardEligibleBadgesForUser } from '../../core/badgeEngine.js';
+import { getBadgeProgress, getAllBadges } from '../../core/badgeEngine.js';
 import { getRoleName } from '../../services/themeService.js';
 import { ICONS } from '../../assets/icons/icons.js';
 
@@ -40,8 +40,8 @@ export async function renderProfile(paramsOrUid) {
     };
   }
 
-  // Auto-award any eligible badges for this user
-  await awardEligibleBadgesForUser(targetUid);
+  // E3: viewing a profile never writes. Badges are awarded when they are earned
+  // (task approval, posting a comment), not when someone views them.
 
   const targetMembers = allMembers.filter(m => m.uid === targetUid || m.id === targetUid);
   const targetMemberIds = targetMembers.map(m => m.id);

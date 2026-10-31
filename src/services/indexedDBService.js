@@ -192,8 +192,47 @@ export async function clear(storeName) {
   return wrap((await tx(storeName, 'readwrite')).clear());
 }
 
+/**
+ * E3: plan how a new queue entry joins the queue. Entries for the same
+ * document are merged into one (fields combined, latest wins), so a burst of
+ * edits uploads once. The merged entry keeps the position of the earliest one,
+ * so a create is never pushed behind writes that depend on it. A pending
+ * 'add' stays an 'add' (creation timestamps are stamped on add). Deletes are
+ * never merged.
+ *
+ * @param {object[]} queued - current queue entries, in queue order
+ * @param {object}   entry  - the new entry ({ collection, docId, operation, data })
+ * @returns {{ record: object, removeIds: number[] }} record to put (with `id`
+ *   when it replaces an existing slot) and the ids of entries it absorbs.
+ */
+export function planSyncQueueEntry(queued, entry, now = Date.now()) {
+  const same = (queued || []).filter((q) => q.collection === entry.collection && q.docId === entry.docId);
+  const fresh = { ...entry, timestamp: now, rev: 0 };
+  if (same.length === 0 || entry.operation === 'delete' || same.some((q) => q.operation === 'delete')) {
+    return { record: fresh, removeIds: [] };
+  }
+  const [first, ...rest] = same;
+  const data = Object.assign({}, ...same.map((q) => q.data || {}), entry.data || {});
+  const operation = same.some((q) => q.operation === 'add') ? 'add' : entry.operation;
+  return {
+    record: { ...fresh, id: first.id, operation, data, rev: Math.max(...same.map((q) => q.rev || 0)) + 1 },
+    removeIds: rest.map((q) => q.id),
+  };
+}
+
 export async function addToSyncQueue(entry) {
-  const result = await add(STORES.SYNC_QUEUE, { ...entry, timestamp: Date.now() });
+  const store = await tx(STORES.SYNC_QUEUE, 'readwrite');
+  const result = await new Promise((resolve, reject) => {
+    const all = store.getAll();
+    all.onerror = () => reject(all.error);
+    all.onsuccess = () => {
+      const { record, removeIds } = planSyncQueueEntry(all.result, entry);
+      removeIds.forEach((id) => store.delete(id));
+      const req = record.id != null ? store.put(record) : store.add(record);
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    };
+  });
   // Emit event so the sync engine knows to wake up and flush immediately
   window.dispatchEvent(new CustomEvent('sync-enqueued'));
   return result;
@@ -205,6 +244,25 @@ export async function getSyncQueue() {
 
 export async function removeSyncQueueItem(id) {
   return remove(STORES.SYNC_QUEUE, id);
+}
+
+/**
+ * Remove an uploaded entry, unless newer edits were merged into it while it was
+ * uploading (its `rev` went up); then it stays queued for the next flush.
+ */
+export async function removeSyncQueueItemIfUnchanged(entry) {
+  const store = await tx(STORES.SYNC_QUEUE, 'readwrite');
+  return new Promise((resolve, reject) => {
+    const req = store.get(entry.id);
+    req.onerror = () => reject(req.error);
+    req.onsuccess = () => {
+      const current = req.result;
+      if (!current || (current.rev || 0) !== (entry.rev || 0)) { resolve(false); return; }
+      const del = store.delete(entry.id);
+      del.onsuccess = () => resolve(true);
+      del.onerror = () => reject(del.error);
+    };
+  });
 }
 
 export async function clearSyncQueue() {

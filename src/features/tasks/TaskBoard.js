@@ -6,13 +6,14 @@
  *   - Compose HTML from TaskCard, TaskModal, and column templates.
  *   - Bind delegated events once via boardEvents.
  *   - Initialise drag-and-drop for every non-viewer.
+ *   - Apply remote changes card by card (refreshBoard), without a full re-render.
  *
  * Business logic (save, move, review, notify) lives in boardEvents.js.
  * HTML templates live in TaskCard.js and TaskModal.js.
  */
 
 import { STORES, getAllByIndex, get, getAll } from '../../services/indexedDBService.js';
-import { escapeHtml } from '../../utils/helpers.js';
+import { escapeHtml, captureScroll, restoreScroll } from '../../utils/helpers.js';
 import { initDragDrop } from './dragDrop.js';
 import { currentUser } from '../../services/authService.js';
 import { sidebarHTML, bindSidebarEvents } from '../members/MemberList.js';
@@ -61,13 +62,10 @@ export function resetBoardState() {
 }
 
 
-// ── Main render ───────────────────────────────────────────────────────────────
+// ── Data ──────────────────────────────────────────────────────────────────────
 
-export async function renderTaskBoard(groupId) {
-  currentGroupId = groupId;
-  const app  = document.getElementById('app');
+async function loadBoardData(groupId) {
   const user = currentUser();
-
   const [group, tasks, members, allProofs, comments, allProfiles] = await Promise.all([
     get(STORES.GROUPS, groupId),
     getAllByIndex(STORES.TASKS,    'groupId', groupId),
@@ -86,7 +84,43 @@ export async function renderTaskBoard(groupId) {
   (allProfiles || []).forEach(p => { profileMap[p.uid] = p; });
 
   const pendingProofsCount = groupProofs.filter((p) => p.status === 'pending').length;
+  return { group, tasks, members, groupProofs, comments, profileMap, me, isAdmin, pendingProofsCount };
+}
+
+/** Cards for one column, in display order. */
+function tasksForStatus(tasks, status) {
+  return status === 'done'
+    ? tasks.filter((t) => t.status === 'done').sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
+    : tasks.filter((t) => t.status === status).sort((a, b) => (b.weight || 0) - (a.weight || 0));
+}
+
+const COMPLETED_EMPTY_HTML = `<div class="completed-empty" style="padding:24px 12px; text-align:center; color:var(--text-muted); font-size:0.85rem;"><div style="font-size:2rem; margin-bottom:8px;">🏆</div>Completed tasks will appear here.</div>`;
+
+function pendingBadgeHTML(count) {
+  return `<span class="pulse-badge">⚠️ ${count} ${getTerm('pendingProof')}</span>`;
+}
+
+// Last rendered HTML per card, so refreshBoard only replaces cards that changed.
+const cardHtmlCache = new Map();
+
+function cardHTML(t, d) {
+  const html = taskCardHTML(t, d.members, d.groupProofs, d.comments, d.isAdmin, d.me, d.profileMap);
+  cardHtmlCache.set(t.id, html);
+  return html;
+}
+
+// ── Main render ───────────────────────────────────────────────────────────────
+
+export async function renderTaskBoard(groupId) {
+  // E3: re-rendering the board that is already on screen keeps its scroll position
+  const scroll = currentGroupId === groupId && document.getElementById('kanban-board') ? captureScroll() : null;
+  currentGroupId = groupId;
+  const app  = document.getElementById('app');
+
+  const data = await loadBoardData(groupId);
+  const { group, tasks, members, groupProofs, profileMap, me, isAdmin, pendingProofsCount } = data;
   const STATUSES = getStatuses();
+  cardHtmlCache.clear();
 
   // Build member avatar stack HTML for header
   const MAX_AVATAR_SHOW = 5;
@@ -120,9 +154,7 @@ export async function renderTaskBoard(groupId) {
             </h1>
           </div>
           <div class="board-header-right">
-            ${isAdmin && pendingProofsCount > 0
-              ? `<span class="pulse-badge">⚠️ ${pendingProofsCount} ${getTerm('pendingProof')}</span>`
-              : ''}
+            ${isAdmin && pendingProofsCount > 0 ? pendingBadgeHTML(pendingProofsCount) : ''}
             ${memberAvatarStack}
             <button class="btn btn-secondary btn-sm" id="btn-share-btn">
               <span class="btn-icon-inline">${ICONS.link}</span> Share
@@ -140,11 +172,7 @@ export async function renderTaskBoard(groupId) {
                   <span class="column-count">${tasks.filter((t) => t.status === s.key).length}</span>
                 </div>
                 <div class="column-cards">
-                  ${tasks
-                    .filter((t) => t.status === s.key)
-                    .sort((a, b) => (b.weight || 0) - (a.weight || 0))
-                    .map((t) => taskCardHTML(t, members, groupProofs, comments, isAdmin, me, profileMap))
-                    .join('')}
+                  ${tasksForStatus(tasks, s.key).map((t) => cardHTML(t, data)).join('')}
                 </div>
                 ${isAdmin && s.key === 'todo' ? `
                   <button class="btn btn-secondary btn-block btn-add-task-col" data-status="${s.key}"
@@ -164,11 +192,7 @@ export async function renderTaskBoard(groupId) {
               <span class="column-count">${tasks.filter(t => t.status === 'done').length}</span>
             </div>
             <div class="column-cards" id="completed-cards">
-              ${tasks
-                .filter(t => t.status === 'done')
-                .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
-                .map(t => taskCardHTML(t, members, groupProofs, comments, isAdmin, me, profileMap))
-                .join('') || `<div style="padding:24px 12px; text-align:center; color:var(--text-muted); font-size:0.85rem;"><div style="font-size:2rem; margin-bottom:8px;">🏆</div>Completed tasks will appear here.</div>`}
+              ${tasksForStatus(tasks, 'done').map((t) => cardHTML(t, data)).join('') || COMPLETED_EMPTY_HTML}
             </div>
           </aside>
         </div>
@@ -182,6 +206,7 @@ export async function renderTaskBoard(groupId) {
     ${proofSubmitModalHTML()}
     <div id="task-detail-modal-container"></div>
   `;
+  restoreScroll(scroll);
 
   // Update the shared context that delegated handlers read
   Object.assign(_boardContext, { groupId, members, group, tasks, viewIsAdmin: isAdmin, me, proofs: groupProofs, profileMap });
@@ -211,5 +236,108 @@ export async function renderTaskBoard(groupId) {
       return dropBlockReason(task, _boardContext.me, status);
     });
     dragDropInitialised = true;
+  }
+}
+
+// ── Remote changes (E3/E4) ────────────────────────────────────────────────────
+
+// Changes to these affect the header, sidebar, share modal or member lists, so
+// they need a full render; everything else only affects cards and counts.
+const FULL_RENDER_COLLECTIONS = new Set(['members', 'groups', 'userProfiles']);
+let fullRenderPending = false;
+let retryTimer = null;
+
+function isBusy() {
+  return !!document.querySelector(
+    '.modal-overlay:not([hidden]), #task-detail-modal, #member-popup-overlay, .task-card.dragging'
+  );
+}
+
+/**
+ * Apply remote changes to the board on screen. `changes` is a list of
+ * `{ collection, ids }` from the sync engine. Card-level changes patch only the
+ * cards and counts that changed (open modals, popups and scroll position stay);
+ * member/group/profile changes re-render the page once nothing is open.
+ */
+export async function refreshBoard(groupId, changes = []) {
+  if (groupId !== currentGroupId || !document.getElementById('kanban-board')) return;
+  if (changes.some((c) => FULL_RENDER_COLLECTIONS.has(c.collection))) fullRenderPending = true;
+
+  if (document.querySelector('.task-card.dragging')) { scheduleRetry(groupId); return; }
+  if (fullRenderPending && !isBusy()) {
+    fullRenderPending = false;
+    await renderTaskBoard(groupId);
+    return;
+  }
+  await patchBoard(groupId, changes);
+  if (fullRenderPending) scheduleRetry(groupId);
+}
+
+function scheduleRetry(groupId) {
+  clearTimeout(retryTimer);
+  retryTimer = setTimeout(() => refreshBoard(groupId), 1000);
+}
+
+/** Replace only the cards whose HTML changed; move cards between columns; update counts. */
+async function patchBoard(groupId, changes) {
+  const data = await loadBoardData(groupId);
+  if (groupId !== currentGroupId) return;
+  Object.assign(_boardContext, {
+    groupId, members: data.members, group: data.group, tasks: data.tasks, viewIsAdmin: data.isAdmin,
+    me: data.me, proofs: data.groupProofs, profileMap: data.profileMap,
+  });
+
+  const changedTaskIds = new Set(changes.filter((c) => c.collection === 'tasks').flatMap((c) => c.ids));
+  const board = document.querySelector('.kanban-wrapper');
+  if (!board) return;
+
+  // Detach the existing card nodes, keyed by task id
+  const existing = new Map();
+  board.querySelectorAll('.task-card[data-task-id]').forEach((el) => existing.set(el.dataset.taskId, el));
+
+  board.querySelectorAll('[data-status]').forEach((col) => {
+    const status = col.dataset.status;
+    const container = col.querySelector('.column-cards');
+    if (!container) return;
+    const list = tasksForStatus(data.tasks, status);
+
+    const nodes = list.map((t) => {
+      const before = cardHtmlCache.get(t.id);
+      const html = cardHTML(t, data);
+      let node = existing.get(t.id);
+      if (!node || html !== before) {
+        const tpl = document.createElement('template');
+        tpl.innerHTML = html.trim();
+        node = tpl.content.firstElementChild;
+        // E4: a short highlight on cards someone else changed
+        if (changedTaskIds.has(t.id)) node.classList.add('remote-updated');
+      }
+      existing.delete(t.id);
+      return node;
+    });
+
+    // Keep nodes that didn't change (no flicker); only reorder/insert/remove
+    container.querySelectorAll(':scope > :not(.task-card)').forEach((el) => el.remove());
+    nodes.forEach((node, i) => {
+      if (container.children[i] !== node) container.insertBefore(node, container.children[i] || null);
+    });
+    while (container.children.length > nodes.length) container.lastElementChild.remove();
+    if (status === 'done' && nodes.length === 0) container.innerHTML = COMPLETED_EMPTY_HTML;
+
+    const count = col.querySelector('.column-count');
+    if (count) count.textContent = String(list.length);
+  });
+
+  // Cards that no longer exist (deleted remotely)
+  existing.forEach((el, id) => { el.remove(); cardHtmlCache.delete(id); });
+
+  // Pending-approval badge in the header
+  const headerRight = document.querySelector('.board-header-right');
+  const badge = headerRight?.querySelector('.pulse-badge');
+  const showBadge = data.isAdmin && data.pendingProofsCount > 0;
+  if (badge && !showBadge) badge.remove();
+  if (showBadge) {
+    if (badge) badge.outerHTML = pendingBadgeHTML(data.pendingProofsCount);
+    else headerRight?.insertAdjacentHTML('afterbegin', pendingBadgeHTML(data.pendingProofsCount));
   }
 }
