@@ -309,8 +309,8 @@ export async function renderDashboard() {
             <h2>No groups yet</h2>
             <p>Create or join a group to see your project pulse here.</p>
             <div style="display:flex;gap:12px;margin-top:24px;justify-content:center">
-              <button class="btn btn-primary" id="btn-create-group-empty">${ICONS.plus} New Group</button>
-              <button class="btn btn-secondary" id="btn-join-group-empty">${ICONS.link} Join Group</button>
+              <button class="btn btn-primary" id="btn-create-group-empty">${ICONS.plus} ${getTerm('newGroup')}</button>
+              <button class="btn btn-secondary" id="btn-join-group-empty">${ICONS.link} ${getTerm('joinGroup')}</button>
             </div>
           </div>
         `}

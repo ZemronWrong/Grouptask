@@ -1,5 +1,4 @@
 import { signIn, signInWithGoogle } from '../../services/authService.js';
-import { bootstrapUserData } from '../../services/memberService.js';
 import { navigate } from '../../services/router.js';
 import { ICONS } from '../../assets/icons/icons.js';
 
@@ -51,14 +50,11 @@ export function renderLogin() {
     submitBtn.disabled = true;
     submitBtn.textContent = 'Signing in...';
     try {
-      const user = await signIn(
+      await signIn(
         document.getElementById('login-email').value.trim(),
         document.getElementById('login-password').value,
       );
-      if (user?.uid) {
-        submitBtn.textContent = 'Loading your groups...';
-        await bootstrapUserData(user.uid);
-      }
+      // F3: the dashboard downloads this user's groups once if this device has none
       navigate('#/dashboard');
     } catch (err) {
       submitBtn.disabled = false;
@@ -72,10 +68,7 @@ export function renderLogin() {
     errorEl.textContent = '';
     googleBtn.disabled = true;
     try {
-      const user = await signInWithGoogle();
-      if (user?.uid) {
-        await bootstrapUserData(user.uid);
-      }
+      await signInWithGoogle();
       navigate('#/dashboard');
     } catch (err) {
       googleBtn.disabled = false;

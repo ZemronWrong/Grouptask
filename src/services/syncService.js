@@ -17,7 +17,7 @@ import {
   where,
   serverTimestamp,
 } from 'firebase/firestore';
-import { fsDb, isMock } from '../config/firebaseConfig.js';
+import { fsDb, isMock } from '../config/firestoreDb.js';
 import { STORES, put, remove, getSyncQueue, removeSyncQueueItem, removeSyncQueueItemIfUnchanged, get } from './indexedDBService.js';
 import { resolveConflict } from './conflictResolver.js';
 import { signalSyncing, signalSynced } from './connectionStatus.js';

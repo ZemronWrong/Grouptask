@@ -1,5 +1,3 @@
-@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Crimson+Text:ital,wght@0,400;0,600;0,700;1,400&family=Nunito:wght@400;600;700;800&family=Outfit:wght@400;500;600;700&display=swap');
-
 /* ═══════════════════════════════════════════
    DESIGN TOKENS (Base variables)
    ═══════════════════════════════════════════ */
@@ -33,7 +31,7 @@
   --text-secondary: #b59b75;
   --text-muted: #8b7355;
   
-  /* F2: plain fonts by default; Guild swaps in its own */
+  /* F2/F3: plain fonts by default (loaded in index.html); Guild swaps in its own */
   --font-heading: 'Outfit', sans-serif;
   --font-body: 'Nunito', sans-serif;
   
@@ -121,7 +119,7 @@
   --shadow-glow: 0 0 0 transparent;
 }
 
-/* ── GUILD BOARD THEME overrides (Fonts) ── */
+/* ── GUILD BOARD THEME overrides (Fonts, loaded by themeService when chosen) ── */
 [data-board-theme="guild"] {
   --font-heading: 'Cinzel', serif;
   --font-body: 'Crimson Text', serif;
@@ -4101,4 +4099,53 @@ textarea { resize: vertical; }
 @media (prefers-reduced-motion: reduce) {
   .wd-board .wd-card, .wd-score-fill, .tour-highlight { transition: none; }
   .wd-card-moving, .wd-avatar, .wd-submit, .wd-points, .tour-dnd-card, .tour-dnd-hand { animation: none; }
+}
+
+/* ═══════════════════════════════════════════
+   F3: SKELETON PLACEHOLDERS (while a screen loads)
+   ═══════════════════════════════════════════ */
+.skel {
+  display: block;
+  border-radius: 6px;
+  background: linear-gradient(90deg, var(--bg-card) 0%, var(--bg-card-hover) 50%, var(--bg-card) 100%);
+  background-size: 200% 100%;
+  animation: skel-shimmer 1.4s ease-in-out infinite;
+}
+.skel + .skel { margin-top: 8px; }
+.skel-circle { width: 32px; height: 32px; border-radius: 50%; flex-shrink: 0; }
+.skel-sidebar { padding: 24px 20px; display: flex; flex-direction: column; gap: 6px; }
+.skel-sidebar .skel:first-child { margin-bottom: 18px; }
+.skel-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px;
+  margin-bottom: 12px;
+}
+.skel-row { display: flex; align-items: center; gap: 12px; padding: 10px 4px; }
+.skel-row-lines { flex: 1; }
+.skel-main { padding: 32px; }
+.skel-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin: 20px 0; }
+@keyframes skel-shimmer { 0% { background-position: 100% 0; } 100% { background-position: -100% 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .skel { animation: none; }
+}
+
+/* F3: "A new version is available · Refresh" (bottom left, clear of the toasts and the connection pill) */
+.update-toast {
+  position: fixed;
+  left: 20px;
+  bottom: 20px;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px 10px 16px;
+  background: var(--bg-surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  font-size: 0.9rem;
+  animation: fadeSlideUp 0.3s ease-out;
 }

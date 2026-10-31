@@ -59,6 +59,21 @@ export function onAuthChange(callback) {
   return onAuthStateChanged(auth, callback);
 }
 
+/**
+ * F3: resolves once the saved sign-in (if any) has been restored from this
+ * device. Until then currentUser() is null even for a signed-in user, so the
+ * router waits for this instead of bouncing a reload through #/login.
+ * Works offline: Firebase restores the session from local storage.
+ */
+export async function authReady() {
+  if (isMock || !auth) return;
+  try {
+    await auth.authStateReady();
+  } catch (err) {
+    console.warn('[Auth] Could not restore the saved sign-in:', err.message);
+  }
+}
+
 export async function signUp(email, password, displayName) {
   if (isMock) {
     const users = getMockUsers();

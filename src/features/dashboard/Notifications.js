@@ -7,6 +7,7 @@ import { escapeHtml, formatTimeAgo } from '../../utils/helpers.js';
 import { navigate } from '../../services/router.js';
 import { getNotifications, getUnreadCount, markAsRead, markAllAsRead } from '../../services/notificationService.js';
 import { ICONS } from '../../assets/icons/icons.js';
+import { skeletonListHTML } from '../../utils/skeletons.js';
 
 /* ── Notification type → SVG icon ── */
 function notifIcon(type) {
@@ -53,7 +54,7 @@ export async function bellIconHTML() {
           <button class="notif-filter-btn" data-filter="system">System</button>
         </div>
         <div class="notif-list" id="notif-list">
-          <div class="notif-loading">Loading…</div>
+          ${skeletonListHTML(3)}
         </div>
       </div>
     </div>

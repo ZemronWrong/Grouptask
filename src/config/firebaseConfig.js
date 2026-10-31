@@ -1,7 +1,8 @@
 import { initializeApp } from 'firebase/app';
-import { initializeFirestore } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 // Analytics removed (UREB A5): no usage data may be sent to third-party services during the study.
+// F3: Firestore is set up in firestoreDb.js, which only signed-in screens load,
+// so the welcome/login/register pages don't download it.
 
 // Vite exposes VITE_* variables via import.meta.env.
 // Locally these come from .env.local; on Vercel set them in the dashboard.
@@ -20,24 +21,15 @@ const firebaseConfig = {
 const isMock = !firebaseConfig.apiKey || firebaseConfig.apiKey === 'YOUR_API_KEY';
 
 let app  = null;
-let fsDb = null;
 let auth = null;
 
 if (!isMock) {
   try {
     app  = initializeApp(firebaseConfig);
-    // B9: ignoreUndefinedProperties prevents local undefined values from throwing errors on setDoc
-    fsDb = initializeFirestore(app, { ignoreUndefinedProperties: true });
     auth = getAuth(app);
-
-    // NOTE: enableIndexedDbPersistence is intentionally NOT called here.
-    // This app uses its own IndexedDB sync queue (syncService.js) as the
-    // single source of truth for offline resilience. Running Firestore's
-    // built-in persistence alongside the custom queue creates duplicate
-    // write paths and race conditions on reconnect. One system only.
   } catch (err) {
     console.error('[Firebase] Failed to initialize:', err);
   }
 }
 
-export { app, fsDb, auth, isMock };
+export { app, auth, isMock };

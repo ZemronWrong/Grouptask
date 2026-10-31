@@ -96,6 +96,9 @@ export const TERMS = {
   }
 };
 
+// The guild theme's decorative fonts are only downloaded when it is chosen (F3)
+const GUILD_FONTS_HREF = 'https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Crimson+Text:ital,wght@0,400;0,600;0,700;1,400&display=swap';
+
 function readSetting(key) {
   try { return globalThis.localStorage?.getItem(key) ?? null; } catch { return null; }
 }
@@ -158,9 +161,19 @@ export function getApproversPhrase() {
   return `${getTerm('owner').toLowerCase()} or ${getTerm('coAdmin').toLowerCase()}`;
 }
 
+function loadGuildFonts() {
+  if (document.getElementById('guild-fonts')) return;
+  const link = document.createElement('link');
+  link.id = 'guild-fonts';
+  link.rel = 'stylesheet';
+  link.href = GUILD_FONTS_HREF;
+  document.head.appendChild(link);
+}
+
 function applyThemeDOM() {
   document.documentElement.setAttribute('data-color-theme', currentColorTheme);
   document.documentElement.setAttribute('data-board-theme', currentBoardTheme);
+  if (currentBoardTheme === 'guild') loadGuildFonts();
   
   // Dispatch an event so React-like views can re-render if necessary
   window.dispatchEvent(new CustomEvent('themeChanged'));

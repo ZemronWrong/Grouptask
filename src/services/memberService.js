@@ -3,7 +3,7 @@ import { flushQueue, fetchGroupDataOnce } from './syncService.js';
 import { generateId, generateInviteCode } from '../utils/helpers.js';
 import { notify } from './notificationService.js';
 import { logActivity } from './activityLogService.js';
-import { fsDb, isMock } from '../config/firebaseConfig.js';
+import { fsDb, isMock } from '../config/firestoreDb.js';
 import {
   collection,
   doc as fsDoc,
@@ -25,21 +25,25 @@ export async function getMembershipsForUser(uid) {
 /**
  * Bootstraps a returning user's data from Firestore into IndexedDB.
  *
- * Called once on login/auth-change when the local IndexedDB is empty.
- * Queries Firestore for all member records belonging to this user,
- * then fetches each associated group and seeds both into IndexedDB so
- * the Dashboard shows the correct boards even on a new device.
+ * Only does anything when the local IndexedDB has no memberships for this
+ * user (a new device). Queries Firestore for all member records belonging to
+ * this user, then fetches each associated group and seeds both into IndexedDB
+ * so the Dashboard shows the correct boards even on a new device.
+ *
+ * Call it through session.js (bootstrapUserDataOnce) so it runs only once (F3).
  *
  * @param {string} uid - Firebase Auth UID of the signed-in user.
- * @returns {Promise<void>}
+ * @returns {Promise<boolean>} true if anything was downloaded.
+ * @throws if the download failed, so the caller can try again later.
  */
 export async function bootstrapUserData(uid) {
-  if (!uid || isMock) return;
+  if (!uid || isMock) return false;
 
   // Only bootstrap if local DB appears empty for this user
   const localMembers = await getAll(STORES.MEMBERS);
   const myLocalMembers = localMembers.filter((m) => m.uid === uid);
-  if (myLocalMembers.length > 0) return; // Already have local data, skip
+  if (myLocalMembers.length > 0) return false; // Already have local data, skip
+  if (!navigator.onLine) throw new Error('Offline: cannot download your groups yet.');
 
   try {
     // 1. Fetch all member records for this user from Firestore
@@ -48,7 +52,7 @@ export async function bootstrapUserData(uid) {
       where('uid', '==', uid)
     );
     const membersSnap = await getDocs(membersQ);
-    if (membersSnap.empty) return;
+    if (membersSnap.empty) return false;
 
     const groupIds = new Set();
     for (const memberDoc of membersSnap.docs) {
@@ -81,8 +85,10 @@ export async function bootstrapUserData(uid) {
     // 3. Pull all group data (tasks, badges, etc.) for every group into IndexedDB
     await Promise.all([...groupIds].map((gId) => fetchGroupDataOnce(gId)));
     console.info('[Bootstrap] Full group data pulled from Firestore.');
+    return true;
   } catch (err) {
     console.warn('[Bootstrap] Failed to bootstrap user data from Firestore:', err.message);
+    throw err;
   }
 }
 

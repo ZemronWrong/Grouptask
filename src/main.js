@@ -1,5 +1,8 @@
 import './assets/styles/styles.css';
 import { boot } from './app.js';
+import { registerServiceWorker } from './services/serviceWorker.js';
+
+registerServiceWorker();
 
 boot().catch((err) => {
   console.error('[GroupTask] Failed to start:', err);

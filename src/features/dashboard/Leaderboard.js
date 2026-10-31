@@ -8,7 +8,10 @@ import { currentUser } from '../../services/authService.js';
 import { sidebarHTML, bindSidebarEvents } from '../members/MemberList.js';
 import { getTerm } from '../../services/themeService.js';
 import { ICONS } from '../../assets/icons/icons.js';
-import { Chart } from 'chart.js/auto';
+// F3: register only the parts the bar chart uses, not every chart type
+import { Chart, BarController, BarElement, CategoryScale, LinearScale, Tooltip } from 'chart.js';
+
+Chart.register(BarController, BarElement, CategoryScale, LinearScale, Tooltip);
 
 export async function renderLeaderboard(groupId) {
   const app = document.getElementById('app');
