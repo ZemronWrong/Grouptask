@@ -1,5 +1,6 @@
 import { describe, test, expect } from '@jest/globals';
-import { dropBlockReason, canDragTask } from '../src/features/tasks/taskPermissions.js';
+import { dropBlockReason, canDragTask, TASK_STATUSES } from '../src/features/tasks/taskPermissions.js';
+import { hasCompletionEvent, EVENT_TYPES } from '../src/core/eventEngine.js';
 
 const owner   = { id: 'g1_owner', uid: 'owner', role: 'owner' };
 const coAdmin = { id: 'g1_co',    uid: 'co',    role: 'co-admin' };
@@ -72,8 +73,8 @@ describe('canDragTask', () => {
     expect(canDragTask(task('todo'), undefined)).toBe(false);
   });
 
-  test('admins can drag any card', () => {
-    for (const s of ['todo', 'in-progress', 'pending-approval', 'done']) {
+  test('admins can drag any card that is not Completed', () => {
+    for (const s of ['todo', 'in-progress', 'pending-approval']) {
       expect(canDragTask(task(s, member.id), owner)).toBe(true);
     }
   });
@@ -86,5 +87,49 @@ describe('canDragTask', () => {
     expect(canDragTask(task('done', member.id), member)).toBe(false);
     expect(canDragTask(task('todo', other.id), member)).toBe(false);
     expect(canDragTask(task('in-progress'), member)).toBe(false);
+  });
+});
+
+// ─── Completed cards are locked (E1a) ────────────────────────────────────────
+
+describe('Completed cards', () => {
+  test('nobody can move a card out of Completed', () => {
+    for (const who of [owner, coAdmin, member, other]) {
+      for (const s of TASK_STATUSES.filter((x) => x !== 'done')) {
+        expect(allowed(task('done', member.id), who, s)).toBe(false);
+        expect(allowed(task('done', owner.id), who, s)).toBe(false);
+      }
+    }
+  });
+
+  test('the refusal explains the lock', () => {
+    const r = dropBlockReason(task('done', member.id), owner, 'in-progress');
+    expect(r.label).toBe('🔒 Completed');
+    expect(r.message).toMatch(/locked/);
+  });
+
+  test('nobody can drag a Completed card, admins included', () => {
+    for (const who of [owner, coAdmin, member, viewer]) {
+      expect(canDragTask(task('done', member.id), who)).toBe(false);
+    }
+  });
+});
+
+describe('completion points are recorded once per task', () => {
+  const ev = (eventType, taskId) => ({ eventType, metadata: { taskId } });
+
+  test('detects an existing completion event for the task', () => {
+    expect(hasCompletionEvent([ev(EVENT_TYPES.CARD_COMPLETE, 't1')], 't1')).toBe(true);
+  });
+
+  test('an overdue completion also counts as recorded', () => {
+    expect(hasCompletionEvent([ev(EVENT_TYPES.CARD_COMPLETE_OVERDUE, 't1')], 't1')).toBe(true);
+  });
+
+  test('ignores other tasks and other event types', () => {
+    const events = [ev(EVENT_TYPES.CARD_COMPLETE, 't2'), ev(EVENT_TYPES.COMMENT_POSTED, 't1')];
+    expect(hasCompletionEvent(events, 't1')).toBe(false);
+    expect(hasCompletionEvent([], 't1')).toBe(false);
+    expect(hasCompletionEvent(undefined, 't1')).toBe(false);
   });
 });

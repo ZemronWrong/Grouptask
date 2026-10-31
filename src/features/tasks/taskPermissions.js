@@ -26,6 +26,12 @@ export function dropBlockReason(task, me, status) {
     return { label: '🔒 View only', message: "Viewers can't move tasks." };
   }
 
+  // E1a: approval is final. Moving a card out of Completed and approving it
+  // again would award its points twice, so nobody can move it.
+  if (task.status === 'done') {
+    return { label: '🔒 Completed', message: 'Completed tasks are locked. Ask the owner if one was approved by mistake.' };
+  }
+
   if (isAdminMember(me)) {
     if (status !== 'done') return null;
     // B4: an admin never approves their own task
@@ -42,10 +48,6 @@ export function dropBlockReason(task, me, status) {
   if (status === 'done') {
     return { label: '🔒 Admins approve', message: 'Only an admin can approve tasks. Submit it for approval instead.' };
   }
-  if (task.status === 'done') {
-    return { label: '🔒', message: "Completed tasks can't be moved." };
-  }
-
   const isMine = !!task.assignedTo && task.assignedTo === me.id;
   if (isMine) {
     if (task.status === 'pending-approval') {

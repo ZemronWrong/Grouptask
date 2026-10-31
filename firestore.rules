@@ -110,6 +110,7 @@ service cloud.firestore {
     // Update: assignee can move their own card to todo/in-progress/pending-approval.
     //         Only owner/co-admin can set status='done' or change task weight,
     //         and never on a task assigned to themselves (B4, D2).
+    //         A Completed task can't be moved out of Completed (E1a).
     // Delete: only group admin.
     //
     // NOTE: weight is locked after creation — only admins may change it to
@@ -123,7 +124,9 @@ service cloud.firestore {
         isGroupAdmin(request.resource.data.groupId) &&
         request.resource.data.status != 'done';
 
-      allow update: if isAuthed() && isMemberOfGroup(resource.data.groupId) && (
+      allow update: if isAuthed() && isMemberOfGroup(resource.data.groupId) &&
+        // E1a: a Completed task stays Completed (re-approving would award points twice)
+        (resource.data.status != 'done' || request.resource.data.status == 'done') && (
         // Admins can update tasks, but to set status='done', the admin cannot be the assignee (B4)
         (isGroupAdmin(resource.data.groupId) && (
           request.resource.data.status != 'done' ||

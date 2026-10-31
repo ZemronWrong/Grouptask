@@ -15,7 +15,7 @@ import { notify } from '../../services/notificationService.js';
 import { logActivity } from '../../services/activityLogService.js';
 import { openTaskModal, openTaskDetailModal } from './TaskModal.js';
 import { renderAchievementPopup } from './TaskCard.js';
-import { recordEvent, EVENT_TYPES } from '../../core/eventEngine.js';
+import { recordEvent, EVENT_TYPES, isCompletionRecorded } from '../../core/eventEngine.js';
 import { awardEligibleBadgesForUser } from '../../core/badgeEngine.js';
 import { openMemberPopup } from './TaskComments.js';
 import { dropBlockReason, isAdminMember } from './taskPermissions.js';
@@ -196,6 +196,10 @@ export function bindBoardEvents(boardContext, rerenderBoard) {
 
     const statusOpt = e.target.closest('#status-options-container .assignee-option');
     if (statusOpt) {
+      if (statusOpt.classList.contains('disabled')) {
+        showToast('Completed tasks are locked. Ask the owner if one was approved by mistake.');
+        return;
+      }
       document.querySelectorAll('#status-options-container .assignee-option').forEach((o) => o.classList.remove('selected'));
       statusOpt.classList.add('selected');
       document.getElementById('task-status-input').value = statusOpt.dataset.status;
@@ -436,7 +440,21 @@ export async function saveTask(groupId, members) {
 
   // For member (non-admin) edits, preserve all locked fields from the original task
   const assignedTo = isAdminEdit ? assignedToRaw : (oldTask?.assignedTo ?? assignedToRaw);
-  const status     = isAdminEdit ? statusRaw    : (oldTask?.status ?? statusRaw);
+  let status       = isAdminEdit ? statusRaw    : (oldTask?.status ?? statusRaw);
+
+  // E1a: a status change in the modal follows the same rules as a drag, so a
+  // Completed task can't be reopened and an admin can't approve their own task.
+  if (oldTask && status !== oldTask.status) {
+    const blocked = dropBlockReason(oldTask, me, status);
+    if (blocked) {
+      status = oldTask.status;
+      showToast(blocked.message);
+    }
+  }
+  if (!oldTask && status === 'done') {
+    status = 'todo';  // the rules refuse a task created as Completed
+    showToast('New tasks start in To Do. Approve them once they are submitted.');
+  }
 
   // D2: an admin can't change the weight of a task assigned to themselves (the
   // rules reject it), so keep the old weight instead of queueing a doomed write.
@@ -502,10 +520,10 @@ export async function saveTask(groupId, members) {
     }
   }
 
-  // If task was completed, award event points and badges
+  // If task was completed, award event points and badges (once per task, E1a)
   if (status === 'done' && (!oldTask || oldTask.status !== 'done')) {
     const assignee = members.find((m) => m.id === assignedTo);
-    if (assignee) {
+    if (assignee && !(await isCompletionRecorded(groupId, id))) {
       const weight = Number(task.weight) || 100;
       await recordEvent({
         eventType: EVENT_TYPES.CARD_COMPLETE,
@@ -601,7 +619,16 @@ async function handleReview(status, groupId, members, me, rerenderBoard) {
   const taskId   = document.getElementById('review-task-id').value;
   const note     = document.getElementById('review-note').value;
   const task     = await get(STORES.TASKS, taskId);
+  if (!task) return;
   const assignee = members.find((m) => m.id === task.assignedTo);
+
+  // E1a: a Completed task is locked. Approving it again would award its points
+  // twice, and rejecting it would reopen it.
+  if (task.status === 'done') {
+    document.getElementById('proof-review-modal').hidden = true;
+    showToast('Completed tasks are locked. Ask the owner if one was approved by mistake.');
+    return;
+  }
 
   // B4: Admin cannot approve their own proof/task
   if (status === 'approved' && task?.assignedTo === me?.id) {
@@ -628,7 +655,8 @@ async function handleReview(status, groupId, members, me, rerenderBoard) {
     await put(STORES.TASKS, task);
     await addToSyncQueue({ collection: 'tasks', docId: taskId, operation: 'update', data: task });
 
-    if (assignee) {
+    // E1a: skip points and badges if this task's completion was already recorded
+    if (assignee && !(await isCompletionRecorded(groupId, taskId))) {
       await notify({ uid: assignee.uid, type: 'approval_granted', title: 'Task Approved! 🎉',
         message: `Your task "${task.title}" was approved.`, icon: '✅', actionLink: `#/group/${groupId}`, groupId });
 

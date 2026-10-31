@@ -365,8 +365,15 @@ export function openTaskModal(task = null, defaultStatus = 'todo') {
 
   const status = task?.status || defaultStatus;
   if (statusEl) statusEl.value = status;
+  // E1a: a Completed task's status is locked
+  const statusLocked = task?.status === 'done';
   document.querySelectorAll('#status-options-container .assignee-option').forEach((o) => {
+    const disabled = statusLocked && o.dataset.status !== 'done';
     o.classList.toggle('selected', o.dataset.status === status);
+    o.classList.toggle('disabled', disabled);
+    o.style.opacity = disabled ? '0.4' : '';
+    o.style.cursor  = disabled ? 'not-allowed' : '';
+    o.title = disabled ? 'Completed tasks are locked' : '';
   });
 
   modal.hidden = false;

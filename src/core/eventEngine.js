@@ -70,6 +70,23 @@ export async function recordEvent({
 }
 
 /**
+ * True if `events` already holds a completion event (on time or overdue) for
+ * `taskId`. The ledger is append-only, so a task must only ever earn its
+ * completion points once (E1a).
+ */
+export function hasCompletionEvent(events, taskId) {
+  return (events || []).some((e) =>
+    (e.eventType === EVENT_TYPES.CARD_COMPLETE || e.eventType === EVENT_TYPES.CARD_COMPLETE_OVERDUE) &&
+    e.metadata?.taskId === taskId
+  );
+}
+
+/** True if the task's completion has already been recorded on this board. */
+export async function isCompletionRecorded(boardId, taskId) {
+  return hasCompletionEvent(await getBoardEvents(boardId), taskId);
+}
+
+/**
  * Gets all gamification events for a user across all boards.
  */
 export async function getUserEvents(userId) {
