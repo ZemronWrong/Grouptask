@@ -1,4 +1,4 @@
-import { STORES, get, getAll, getAllByIndex, put, addToSyncQueue } from '../../services/indexedDBService.js';
+import { STORES, get, getAll, getAllByIndex, put, addToSyncQueue, getSyncQueue } from '../../services/indexedDBService.js';
 import { calculateBoardPoints } from '../../core/eventEngine.js';
 import { calculateAllContributionScores } from '../../core/scoringEngine.js';
 import { calculateAllPEScores } from '../../core/peerEvaluationEngine.js';
@@ -221,6 +221,37 @@ function showToast(msg) {
   setTimeout(() => t.remove(), 2500);
 }
 
+// ── Per-card "Syncing… / Saved ✓" indicator (E2b) ─────────────────────────────
+// The review is saved locally first; the sync engine uploads it in the
+// background and announces each upload with a window event.
+const SYNC_LABELS = {
+  syncing:  { text: '⟳ Syncing…', color: 'var(--text-muted)' },
+  offline:  { text: '○ Saved on this device, will sync when online', color: 'var(--text-muted)' },
+  saved:    { text: 'Saved ✓', color: '#22c55e' },
+  rejected: { text: '✕ Not saved to the server. Please submit again.', color: 'var(--danger, #ef4444)' },
+};
+
+function setEvalSyncStatus(reviewId, state) {
+  if (!reviewId) return;
+  const el = document.querySelector(`.eval-sync-status[data-review-id="${reviewId}"]`);
+  const cfg = SYNC_LABELS[state];
+  if (!el || !cfg) return;
+  el.textContent = cfg.text;
+  el.style.color = cfg.color;
+}
+
+let evalSyncListenersBound = false;
+function bindEvalSyncListeners() {
+  if (evalSyncListenersBound) return;
+  evalSyncListenersBound = true;
+  window.addEventListener('sync-flushed', (e) => {
+    if (e.detail?.collection === 'peerReviews') setEvalSyncStatus(e.detail.docId, 'saved');
+  });
+  window.addEventListener('sync-rejected', (e) => {
+    if (e.detail?.collection === 'peerReviews') setEvalSyncStatus(e.detail.docId, 'rejected');
+  });
+}
+
 export async function renderEvaluation(groupId) {
   const app = document.getElementById('app');
   const user = currentUser();
@@ -237,6 +268,9 @@ export async function renderEvaluation(groupId) {
     pr.reviewerId === user?.uid || 
     pr.reviewerUid === user?.uid ||
     pr.reviewerMemberId === me?.id
+  );
+  const queuedReviewIds = new Set(
+    (await getSyncQueue()).filter(q => q.collection === 'peerReviews').map(q => q.docId)
   );
 
   app.innerHTML = `
@@ -299,7 +333,8 @@ export async function renderEvaluation(groupId) {
                     <label style="font-weight:600; color:var(--text);">Feedback (Private)</label>
                     <textarea name="comment_${m.id}" rows="2" placeholder="Write private feedback for your teammate..." style="width:100%; border-radius:8px; border:1px solid var(--border); padding:8px 10px; background:var(--bg-input); color:var(--text); box-sizing:border-box;">${existingReview?.comment || ''}</textarea>
                   </div>
-                  <div style="text-align:right;">
+                  <div style="display:flex; justify-content:flex-end; align-items:center; gap:12px;">
+                    <span class="eval-sync-status" data-review-id="${existingReview?.id || ''}" style="font-size:0.75rem; color:var(--text-muted);">${existingReview && queuedReviewIds.has(existingReview.id) ? SYNC_LABELS.syncing.text : ''}</span>
                     <button type="submit" class="btn ${existingReview ? 'btn-secondary' : 'btn-primary'} btn-sm" style="font-weight:700;">
                       ${existingReview ? '✓ Update Evaluation' : 'Submit Evaluation'}
                     </button>
@@ -315,10 +350,18 @@ export async function renderEvaluation(groupId) {
 
   bindSidebarEvents(groupId);
 
+  bindEvalSyncListeners();
+
+  // E2b: submitting only writes the review locally and queues it (two quick
+  // IndexedDB writes), then shows the result. The upload runs in the background.
+  const inFlight = new Set();
+
   document.querySelectorAll('.eval-form').forEach(form => {
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
       const evaluateeId = form.dataset.evaluateeId;
+      if (inFlight.has(evaluateeId)) return;  // ignore double submits
+
       const evaluatee = members.find(m => m.id === evaluateeId);
       const scoreInput = form.querySelector(`input[name="score_${evaluateeId}"]:checked`);
       if (!scoreInput) {
@@ -327,10 +370,11 @@ export async function renderEvaluation(groupId) {
       }
       const score = parseInt(scoreInput.value);
       const comment = form.querySelector(`textarea[name="comment_${evaluateeId}"]`)?.value || '';
+      const submitBtn = form.querySelector('button[type="submit"]');
 
-      const existingReview = myReviews.find(r => 
-        r.evaluateeId === evaluateeId || 
-        r.evaluateeId === evaluatee?.uid || 
+      const existingReview = myReviews.find(r =>
+        r.evaluateeId === evaluateeId ||
+        r.evaluateeId === evaluatee?.uid ||
         r.evaluateeUid === evaluatee?.uid
       );
       const reviewId = existingReview ? existingReview.id : generateId();
@@ -348,8 +392,26 @@ export async function renderEvaluation(groupId) {
         updatedAt: Date.now()
       };
 
-      await put(STORES.PEER_REVIEWS, review);
-      await addToSyncQueue({ collection: 'peerReviews', docId: reviewId, operation: 'update', data: review });
+      inFlight.add(evaluateeId);
+      const previousLabel = submitBtn?.textContent;
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Saving…';
+      }
+
+      try {
+        await put(STORES.PEER_REVIEWS, review);
+        await addToSyncQueue({ collection: 'peerReviews', docId: reviewId, operation: 'update', data: review });
+      } catch (err) {
+        console.error('[Evaluation] Could not save review:', err);
+        showToast('Could not save your evaluation. Please try again.');
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.textContent = previousLabel;
+        }
+        inFlight.delete(evaluateeId);
+        return;
+      }
 
       // E2a: nothing else happens on submit. A reviewer's device only holds the
       // reviews they wrote, so any "average" here would be their own rating, and
@@ -357,7 +419,12 @@ export async function renderEvaluation(groupId) {
       // sent to) the evaluatee. The consent form promises individual ratings are
       // never shown to groupmates, so a rating must not change anything they see.
 
-      showToast(`Evaluation for ${evaluatee?.displayName || 'teammate'} submitted! ⭐`);
+      // Keep the in-closure myReviews in sync so later submits use the update path.
+      const existingIdx = myReviews.findIndex(r =>
+        r.evaluateeId === evaluateeId || r.evaluateeUid === evaluatee?.uid
+      );
+      if (existingIdx >= 0) myReviews[existingIdx] = review;
+      else myReviews.push(review);
 
       // Patch only the submitted card in-place - preserving other cards' unsaved star ratings.
       // A full renderEvaluation() would destroy the entire page DOM, losing any ratings the
@@ -390,24 +457,21 @@ export async function renderEvaluation(groupId) {
         alreadyNote.style.cssText = 'font-size:0.82rem; color:#22c55e; margin:8px 0 12px 0; font-weight:600; display:flex; align-items:center; gap:6px;';
         alreadyNote.textContent = `✓ You evaluated this teammate (${score}/5 ⭐). You can modify your rating or feedback below:`;
 
-        // Swap the submit button label
-        const submitBtn = form.querySelector('button[type="submit"]');
-        if (submitBtn) {
-          submitBtn.textContent = '✓ Update Evaluation';
-          submitBtn.className = 'btn btn-secondary btn-sm';
-          submitBtn.style.fontWeight = '700';
-        }
-
-        // Keep the in-closure myReviews in sync so subsequent submits use the update path.
-        const existingIdx = myReviews.findIndex(r =>
-          r.evaluateeId === evaluateeId || r.evaluateeUid === evaluatee?.uid
-        );
-        if (existingIdx >= 0) myReviews[existingIdx] = review;
-        else myReviews.push(review);
-      } else {
-        // DOM card not found (shouldn't happen) - fall back to full re-render
-        await renderEvaluation(groupId);
+        // Background upload status for this review
+        const syncStatus = form.querySelector('.eval-sync-status');
+        if (syncStatus) syncStatus.dataset.reviewId = reviewId;
+        setEvalSyncStatus(reviewId, navigator.onLine ? 'syncing' : 'offline');
       }
+
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.textContent = '✓ Update Evaluation';
+        submitBtn.className = 'btn btn-secondary btn-sm';
+        submitBtn.style.fontWeight = '700';
+      }
+      inFlight.delete(evaluateeId);
+
+      showToast(`Evaluation for ${evaluatee?.displayName || 'teammate'} submitted! ⭐`);
     });
   });
 }

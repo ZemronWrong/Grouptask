@@ -35,7 +35,7 @@ export async function startSync(groupId) {
   if (isSyncingGroup === groupId) {
     return; // Already syncing this group, prevent infinite reload loops
   }
-  
+
   stopSync();
   isSyncingGroup = groupId;
   if (isMock) {
@@ -240,15 +240,31 @@ function listenForChanges(groupId) {
     .catch((err) => console.warn('[Sync] Could not set up userProfile listeners:', err.message));
 }
 
+/** Tell the UI that a queued document reached the server (or was refused). */
+function announce(type, entry, extra = {}) {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new CustomEvent(type, {
+    detail: { collection: entry.collection, docId: entry.docId, ...extra },
+  }));
+}
+
+let flushRequested = false;
+
 export async function flushQueue() {
-  if (isSyncing) return;
-  
+  if (isSyncing) {
+    // Something was queued while a flush is running: go round again afterwards
+    // instead of leaving it until the next trigger.
+    flushRequested = true;
+    return;
+  }
+
   if (isMock) {
     const queue = await getSyncQueue();
     if (queue.length > 0) {
       console.log('[Sync Engine Mock] Flushing mock sync queue:', queue);
       for (const entry of queue) {
         await removeSyncQueueItem(entry.id);
+        announce('sync-flushed', entry);
       }
     }
     return;
@@ -287,6 +303,7 @@ export async function flushQueue() {
           await setDoc(ref, data, { merge: true });
         }
         await removeSyncQueueItem(entry.id);
+        announce('sync-flushed', entry);
       } catch (err) {
         console.warn('[Sync] Failed to push entry:', err.message);
         // "Poison Pill" Prevention:
@@ -302,6 +319,7 @@ export async function flushQueue() {
         if (PERMANENT_ERRORS.has(err.code)) {
           console.error(`[Sync] Permanent rejection (${err.code}). Removing invalid item from queue to prevent deadlock.`);
           await removeSyncQueueItem(entry.id);
+          announce('sync-rejected', entry, { code: err.code });
         } else {
           // Transient error (e.g. network drop mid-flight). Break and retry later.
           break;
@@ -311,6 +329,10 @@ export async function flushQueue() {
   } finally {
     isSyncing = false;
     signalSynced();
+  }
+  if (flushRequested) {
+    flushRequested = false;
+    if (navigator.onLine) await flushQueue();
   }
 }
 
