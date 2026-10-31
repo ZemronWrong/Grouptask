@@ -33,10 +33,19 @@ const STATE_CONFIG = {
 };
 
 let _currentState = navigator.onLine ? 'connected' : 'offline';
+let _queueLength = 0;   // E4: changes saved on this device but not yet uploaded
 
-function setState(state) {
-  if (_currentState === state) return;
+/** E4: second half of the label, e.g. "All changes saved" or "3 changes waiting". */
+function _saveLabel() {
+  if (_queueLength === 0) return _currentState === 'connected' ? 'All changes saved' : '';
+  const n = `${_queueLength} change${_queueLength === 1 ? '' : 's'}`;
+  return navigator.onLine ? `${n} to upload` : `${n} waiting`;
+}
+
+function setState(state, queueLength = _queueLength) {
+  if (_currentState === state && _queueLength === queueLength) return;
   _currentState = state;
+  _queueLength = queueLength;
   _render();
 }
 
@@ -60,22 +69,20 @@ function _render() {
     el.classList.add('cs-spin');
   }
 
-  el.innerHTML = `<span class="cs-icon">${cfg.icon}</span><span class="cs-label">${cfg.label}</span>`;
+  const save = _saveLabel();
+  el.innerHTML = `<span class="cs-icon">${cfg.icon}</span><span class="cs-label">${cfg.label}${save ? ` · ${save}` : ''}</span>`;
 }
 
 // ── Sync queue polling ────────────────────────────────────────────────────────
 async function _pollQueue() {
-  if (!navigator.onLine) return; // handled by event listeners
-
   try {
     const queue = await getSyncQueue();
-    if (queue.length > 0) {
-      setState('syncing');
-    } else if (_currentState === 'syncing' || _currentState === 'connecting') {
-      setState('connected');
-    } else {
-      setState('connected');
+    if (!navigator.onLine) {
+      // Network state is handled by the event listeners; just update the count
+      setState(_currentState, queue.length);
+      return;
     }
+    setState(queue.length > 0 ? 'syncing' : 'connected', queue.length);
   } catch {
     // DB not ready yet; leave existing state
   }
@@ -109,6 +116,12 @@ export function initConnectionStatus() {
   window.addEventListener('online',  _onOnline);
   window.addEventListener('offline', _onOffline);
 
+  // E4: follow the sync queue as it changes, not only on the poll
+  for (const evt of ['sync-enqueued', 'sync-flushed', 'sync-rejected']) {
+    window.addEventListener(evt, () => { _pollQueue(); });
+  }
+  _pollQueue();
+
   // Periodically check the sync queue even when online,
   // so the pill flips to "Syncing" when writes are queued locally.
   if (!isMock) {
@@ -129,5 +142,6 @@ export function signalSyncing() {
  * Called by syncService when flushQueue completes.
  */
 export function signalSynced() {
-  if (navigator.onLine) setState('connected');
+  // A flush can stop early (network drop), so check what is still queued
+  _pollQueue();
 }

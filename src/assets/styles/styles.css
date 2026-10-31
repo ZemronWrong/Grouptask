@@ -3741,3 +3741,15 @@ textarea { resize: vertical; }
 .comment-badge-inline:active {
   transform: scale(0.98);
 }
+
+/* E4: short highlight on a card that someone else just changed */
+.task-card.remote-updated {
+  animation: remote-updated 1.6s ease-out;
+}
+@keyframes remote-updated {
+  0%   { box-shadow: 0 0 0 3px var(--primary); }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .task-card.remote-updated { animation: none; }
+}

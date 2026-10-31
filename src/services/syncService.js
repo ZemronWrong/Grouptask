@@ -23,6 +23,7 @@ import { resolveConflict } from './conflictResolver.js';
 import { signalSyncing, signalSynced } from './connectionStatus.js';
 
 let unsubscribers = [];
+let profileUids = new Set();   // userProfiles we already listen to (E4)
 let isSyncing = false;
 let isSyncingGroup = null;
 let onRemoteChange = null;
@@ -129,6 +130,7 @@ if (typeof window !== 'undefined') {
 export function stopSync() {
   unsubscribers.forEach((unsub) => unsub());
   unsubscribers = [];
+  profileUids = new Set();
   isSyncingGroup = null;
 }
 
@@ -222,6 +224,12 @@ function listenForChanges(groupId) {
         applyRemoteDoc(storeName, change.doc, change.type === 'removed')
       ));
       signalRemoteChange(colName, ids.filter(Boolean));
+      // E4: members who join later get live avatar/name updates too
+      if (colName === 'members') {
+        snapshot.docChanges()
+          .filter((change) => change.type !== 'removed')
+          .forEach((change) => listenToProfile(change.doc.data().uid));
+      }
     }, (err) => {
       console.warn(`[Sync] Listener error on ${colName}:`, err.message);
     });
@@ -238,24 +246,41 @@ function listenForChanges(groupId) {
   });
   unsubscribers.push(groupUnsub);
 
-  // Listen to userProfiles for each group member so avatar/photo changes propagate in real time.
-  // We do a one-time read of the members collection to get their UIDs, then subscribe to each.
-  getDocs(query(fsCollection(fsDb, 'members'), where('groupId', '==', groupId)))
-    .then((membersSnap) => {
-      const uids = [...new Set(membersSnap.docs.map((d) => d.data().uid).filter(Boolean))];
-      for (const uid of uids) {
-        // B8: applyRemoteDoc normalizes Timestamps, so remote profile changes win LWW correctly.
-        const profileUnsub = onSnapshot(fsDoc(fsDb, 'userProfiles', uid), async (docSnap) => {
-          if (!docSnap.exists()) return;
-          const id = await applyRemoteDoc(STORES.USER_PROFILES, docSnap);
-          signalRemoteChange('userProfiles', id ? [id] : []);
-        }, (err) => {
-          console.warn(`[Sync] userProfile listener error for ${uid}:`, err.message);
-        });
-        unsubscribers.push(profileUnsub);
-      }
-    })
-    .catch((err) => console.warn('[Sync] Could not set up userProfile listeners:', err.message));
+  // userProfiles listeners are added by the members listener above, for the
+  // members present now and anyone who joins later (E4).
+}
+
+/** Listen to one member's userProfile so avatar/name changes propagate in real time. */
+function listenToProfile(uid) {
+  if (!uid || profileUids.has(uid)) return;
+  profileUids.add(uid);
+  // B8: applyRemoteDoc normalizes Timestamps, so remote profile changes win LWW correctly.
+  const profileUnsub = onSnapshot(fsDoc(fsDb, 'userProfiles', uid), async (docSnap) => {
+    if (!docSnap.exists()) return;
+    const id = await applyRemoteDoc(STORES.USER_PROFILES, docSnap);
+    signalRemoteChange('userProfiles', id ? [id] : []);
+  }, (err) => {
+    console.warn(`[Sync] userProfile listener error for ${uid}:`, err.message);
+  });
+  unsubscribers.push(profileUnsub);
+}
+
+/**
+ * E4: after the server refuses a write, put the local copy back to what the
+ * server has, so the screen stops showing a change that never happened.
+ */
+async function rollBackRejected(entry) {
+  const storeName = storeForCollection(entry.collection);
+  if (!Object.values(STORES).includes(storeName) || storeName === STORES.SYNC_QUEUE) return;
+  try {
+    const snap = await getDoc(fsDoc(fsDb, entry.collection, entry.docId));
+    if (snap.exists()) await put(storeName, normalizeTimestamps({ id: snap.id, ...snap.data() }));
+    else if (entry.operation !== 'delete') await remove(storeName, entry.docId);
+  } catch (err) {
+    console.warn(`[Sync] Could not restore ${entry.collection}/${entry.docId}:`, err.message);
+    return;
+  }
+  signalRemoteChange(entry.collection, [entry.docId]);
 }
 
 /** Tell the UI that a queued document reached the server (or was refused). */
@@ -336,8 +361,11 @@ export async function flushQueue() {
         ]);
         if (PERMANENT_ERRORS.has(err.code)) {
           console.error(`[Sync] Permanent rejection (${err.code}) of ${entry.operation} ${entry.collection}/${entry.docId}. Dropped from the queue; it will not be retried.`, entry.data);
-          await removeSyncQueueItemIfUnchanged(entry);
-          announce('sync-rejected', entry, { code: err.code });
+          // If newer edits were merged in meanwhile, they get their own try instead
+          if (await removeSyncQueueItemIfUnchanged(entry)) {
+            await rollBackRejected(entry);
+            announce('sync-rejected', entry, { code: err.code });
+          }
         } else {
           // Transient error (e.g. network drop mid-flight). Break and retry later.
           break;

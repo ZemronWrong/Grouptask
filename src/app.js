@@ -157,6 +157,20 @@ export async function boot() {
 
   setRemoteChangeCallback(scheduleRemoteChange);
 
+  // E4: our own change was refused by the server and has been put back
+  // (peer reviews show this on their own card instead)
+  window.addEventListener('sync-rejected', (e) => {
+    const { collection } = e.detail || {};
+    if (collection !== 'tasks' && collection !== 'proofSubmissions') return;
+    const t = document.createElement('div');
+    t.className = 'toast';
+    t.textContent = collection === 'tasks'
+      ? "The server didn't accept your change to a task (you may not have permission), so it was put back."
+      : "The server didn't accept your submission, so it was undone.";
+    document.body.appendChild(t);
+    setTimeout(() => t.remove(), 4000);
+  });
+
   // When the user finishes interacting (blur on inputs), flush any pending reload
   document.addEventListener('blur', () => {
     if (pendingReload && !hasDirtyInputs()) {
