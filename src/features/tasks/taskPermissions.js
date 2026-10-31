@@ -69,3 +69,16 @@ export function dropBlockReason(task, me, status) {
 export function canDragTask(task, me) {
   return TASK_STATUSES.some((s) => s !== task?.status && !dropBlockReason(task, me, s));
 }
+
+/**
+ * What an allowed drop does (call dropBlockReason first):
+ *   'review' — into Completed: open REVIEW APPROVAL, so approval goes through handleReview.
+ *   'submit' — into Pending Approval by a member, or by an admin with their own
+ *              card: open the SUBMIT modal so there is a submission to review (E1b).
+ *   'move'   — anything else: move the card straight away.
+ */
+export function dropAction(task, me, status) {
+  if (status === 'done') return 'review';
+  if (status === 'pending-approval' && (!isAdminMember(me) || task?.assignedTo === me?.id)) return 'submit';
+  return 'move';
+}

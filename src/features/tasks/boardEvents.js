@@ -18,7 +18,7 @@ import { renderAchievementPopup } from './TaskCard.js';
 import { recordEvent, EVENT_TYPES, isCompletionRecorded } from '../../core/eventEngine.js';
 import { awardEligibleBadgesForUser } from '../../core/badgeEngine.js';
 import { openMemberPopup } from './TaskComments.js';
-import { dropBlockReason, isAdminMember } from './taskPermissions.js';
+import { dropBlockReason, dropAction, isAdminMember } from './taskPermissions.js';
 
 function showToast(msg) {
   const t = document.createElement('div');
@@ -325,7 +325,7 @@ export function bindBoardEvents(boardContext, rerenderBoard) {
     task.updatedAt = Date.now();
     await put(STORES.TASKS, task);
     await addToSyncQueue({ collection: 'tasks', docId: taskId, operation: 'update', data: task });
-    const admins = members.filter((m) => m.role === 'owner' || m.role === 'co-admin');
+    const admins = members.filter((m) => isAdminMember(m) && m.uid !== me?.uid);
     for (const a of admins) {
       await notify({ uid: a.uid, type: 'approval_request', title: 'Approval Requested',
         message: `${me?.displayName} is requesting approval for "${task.title}"`,
@@ -364,7 +364,7 @@ export function bindBoardEvents(boardContext, rerenderBoard) {
         await put(STORES.PROOF_SUBMISSIONS, proof);
         await addToSyncQueue({ collection: 'proofSubmissions', docId: proofId, operation: 'update', data: proof });
       }
-      const admins = members.filter((m) => m.role === 'owner' || m.role === 'co-admin');
+      const admins = members.filter((m) => isAdminMember(m) && m.uid !== me?.uid);
       for (const a of admins) {
         await notify({ uid: a.uid, type: 'approval_request', title: 'Approval Requested',
           message: `${me.displayName} is requesting approval for "${task.title}"`,
@@ -553,8 +553,10 @@ export async function saveTask(groupId, members) {
  * Move a task to a new status column (called by drag-drop).
  *
  * Returns what the board should do next:
- *   'submit' — member dropped into Pending Approval: open the SUBMIT proof modal
- *              (the card only moves when they confirm; cancel leaves it in place).
+ *   'submit' — a member, or an admin with their own card, dropped into Pending
+ *              Approval: open the SUBMIT proof modal (the card only moves when they
+ *              confirm; cancel leaves it in place), so the other admin has a
+ *              submission to review (E1b).
  *   'review' — admin dropped into Completed: open the REVIEW APPROVAL modal, so
  *              approval always goes through handleReview.
  *   null     — the card was moved, or the move was refused (with a toast).
@@ -576,8 +578,8 @@ export async function moveTask(taskId, newStatus, groupId, members) {
     showToast(blocked.message);
     return null;
   }
-  if (newStatus === 'done') return 'review';
-  if (!isAdmin && newStatus === 'pending-approval') return 'submit';
+  const action = dropAction(task, me, newStatus);
+  if (action !== 'move') return action;
 
   const oldStatus = task.status;
   const accepting = !isAdmin && !task.assignedTo;
@@ -601,7 +603,8 @@ export async function moveTask(taskId, newStatus, groupId, members) {
     meta: { taskId, taskTitle: task.title, oldStatus, newStatus },
   });
 
-  // Only an admin's drop reaches here for pending-approval (members go via the modal)
+  // Only an admin moving someone else's card reaches here for pending-approval
+  // (members and an admin's own card go via the SUBMIT modal)
   if (newStatus === 'pending-approval') {
     const admins = members.filter((m) => isAdminMember(m));
     for (const a of admins) {

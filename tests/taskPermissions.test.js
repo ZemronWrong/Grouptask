@@ -1,5 +1,5 @@
 import { describe, test, expect } from '@jest/globals';
-import { dropBlockReason, canDragTask, TASK_STATUSES } from '../src/features/tasks/taskPermissions.js';
+import { dropBlockReason, canDragTask, dropAction, TASK_STATUSES } from '../src/features/tasks/taskPermissions.js';
 import { hasCompletionEvent, EVENT_TYPES } from '../src/core/eventEngine.js';
 
 const owner   = { id: 'g1_owner', uid: 'owner', role: 'owner' };
@@ -131,5 +131,32 @@ describe('completion points are recorded once per task', () => {
     expect(hasCompletionEvent(events, 't1')).toBe(false);
     expect(hasCompletionEvent([], 't1')).toBe(false);
     expect(hasCompletionEvent(undefined, 't1')).toBe(false);
+  });
+});
+
+// ─── What a drop does (D5, E1b) ──────────────────────────────────────────────
+
+describe('dropAction', () => {
+  test('a member dropping into Pending Approval opens the Submit modal', () => {
+    expect(dropAction(task('in-progress', member.id), member, 'pending-approval')).toBe('submit');
+  });
+
+  test("an admin dropping their own card into Pending Approval opens the Submit modal", () => {
+    expect(dropAction(task('in-progress', owner.id), owner, 'pending-approval')).toBe('submit');
+    expect(dropAction(task('todo', coAdmin.id), coAdmin, 'pending-approval')).toBe('submit');
+  });
+
+  test("an admin moving someone else's card into Pending Approval just moves it", () => {
+    expect(dropAction(task('in-progress', member.id), owner, 'pending-approval')).toBe('move');
+    expect(dropAction(task('in-progress'), owner, 'pending-approval')).toBe('move');
+  });
+
+  test('dropping into Completed always opens the review modal', () => {
+    expect(dropAction(task('pending-approval', member.id), owner, 'done')).toBe('review');
+  });
+
+  test('other moves happen straight away', () => {
+    expect(dropAction(task('todo', member.id), member, 'in-progress')).toBe('move');
+    expect(dropAction(task('in-progress', owner.id), owner, 'todo')).toBe('move');
   });
 });
