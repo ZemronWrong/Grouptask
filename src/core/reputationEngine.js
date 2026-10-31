@@ -5,8 +5,10 @@
  * is *perceived* by peers over time — distinct from raw task output (Board Points)
  * or experience accumulation (Global XP).
  *
- * Rep is earned through peer evaluations, substantive commenting, and consistent task
- * completion, but can also decrease from low peer ratings or free-loader flags.
+ * Rep is earned through substantive commenting and consistent task completion, but
+ * can also decrease from late delivery or free-loader flags. Peer ratings never
+ * change reputation: reputation is visible to the group, and the consent form
+ * promises that individual ratings are never shown to groupmates (E2a).
  * This asymmetry matters: it's easy to lose reputation and harder to rebuild it,
  * which discourages coasting without penalizing genuine struggle.
  *
@@ -30,8 +32,6 @@ export const REP_DELTAS = {
   card_complete:           +5,
   card_complete_overdue:   -2,   // late delivery signals unreliability
   comment_posted:          +2,
-  peer_eval_received_high: +15,  // 4+ stars from peers is significant signal
-  peer_eval_received_low:  -20,  // sub-2.5 stars from peers is a serious flag
   streak_day:              +3,
   freeloaded_flagged:      -50,  // instructor-level penalty
   appeal_accepted:         +30,  // restores trust after a false flag
@@ -83,19 +83,15 @@ export function getRepProgress(rep) {
 }
 
 /**
- * Derives the reputation delta from a peer evaluation score.
- *
- * Using a threshold model rather than a linear mapping avoids penalizing members
- * for receiving a 3 instead of a 5 — only extremes (clear excellence or clear failure)
- * move the needle. This reduces political gaming of the peer review system.
- *
- * @param {number} avgScore - Average peer score for this evaluation round (1–5).
- * @returns {number} Rep delta to apply.
+ * Event types recorded by older versions when a peer rating was submitted.
+ * They may still exist in the append-only events ledger, so they are ignored
+ * when totalling reputation (E2a).
  */
-export function repDeltaFromPeerEval(avgScore) {
-  if (avgScore >= 4.0) return REP_DELTAS.peer_eval_received_high;
-  if (avgScore <  2.5) return REP_DELTAS.peer_eval_received_low;
-  return 0; // middle scores are neutral — no rep movement
+export const PEER_EVAL_EVENT_TYPES = ['peer_eval_received_high', 'peer_eval_received_low'];
+
+/** True if an event counts toward reputation (everything except legacy peer-eval events). */
+export function countsTowardReputation(event) {
+  return !PEER_EVAL_EVENT_TYPES.includes(event?.eventType);
 }
 
 /**
@@ -111,7 +107,7 @@ export function repDeltaFromPeerEval(avgScore) {
 export function calculateReputation(events, userId) {
   if (!Array.isArray(events) || !userId) return 0;
   return events
-    .filter((e) => e.userId === userId && typeof e.repDelta === 'number')
+    .filter((e) => e.userId === userId && typeof e.repDelta === 'number' && countsTowardReputation(e))
     .reduce((sum, e) => sum + e.repDelta, 0);
 }
 

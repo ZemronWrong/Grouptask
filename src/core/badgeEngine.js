@@ -107,7 +107,7 @@ export const BOARD_BADGES = [
     category: 'Board',
     description: 'Received an average peer evaluation of 4.0 or above on this board',
     howToGet: 'Receive an average peer rating score of 4.0 / 5.0 or higher from your teammates on this board.',
-    checkFn: ({ avgPeerScore }) => avgPeerScore >= 4.0,
+    checkFn: ({ avgPeerScore }) => avgPeerScore != null && avgPeerScore >= 4.0,
   },
   {
     id: 'no_free_loader',
@@ -328,7 +328,6 @@ export async function awardEligibleBadgesForUser(userId) {
     const myMembers = allMembers.filter((m) => m.uid === userId);
     const allTasks = await getAll(STORES.TASKS);
     const allProofs = await getAll(STORES.PROOF_SUBMISSIONS);
-    const allReviews = await getAll(STORES.PEER_REVIEWS);
     const allComments = await getAll(STORES.COMMENTS);
     const existingBadges = await getAll(STORES.BADGES);
 
@@ -346,10 +345,6 @@ export async function awardEligibleBadgesForUser(userId) {
     for (const mm of myMembers) {
       const groupTasks = allTasks.filter((t) => t.groupId === mm.groupId);
       const groupProofs = allProofs.filter((p) => p.groupId === mm.groupId);
-      const mReviews = allReviews.filter((r) => r.evaluateeId === mm.id || r.evaluateeUid === userId);
-      const avgScore = mReviews.length > 0
-        ? mReviews.reduce((sum, r) => sum + r.score, 0) / mReviews.length
-        : 3.0;
 
       // B6: Use member's real contribution score and review count
       const contributionScore = calculateContributionScore(groupTasks, mm.id).score;
@@ -364,7 +359,9 @@ export async function awardEligibleBadgesForUser(userId) {
         tasks: groupTasks,
         proofs: groupProofs,
         contributionScore,
-        avgPeerScore: avgScore,
+        // E2a: no peer score. A device only holds the reviews its own user wrote,
+        // so awarding Team Player here would reveal that reviewer's rating.
+        avgPeerScore: null,
         completedCount: groupTasks.filter((t) => t.assignedTo === mm.id && t.status === 'done').length,
         reviewCount,
         existingBadgeIds: [...earnedBadgeTypes]

@@ -67,7 +67,6 @@ export async function renderSettings() {
     { key: 'free_rider_alert', label: 'Free-Rider Warning' },
     { key: 'badge_earned', label: 'Badge Earned' },
     { key: 'member_joined', label: 'Member Joined' },
-    { key: 'evaluation_received', label: 'Evaluation Received' },
   ];
 
   app.innerHTML = `

@@ -8,7 +8,7 @@
 
 import { STORES, add, addToSyncQueue, getAllByIndex, getAll } from '../services/indexedDBService.js';
 import { generateId } from '../utils/helpers.js';
-import { REP_DELTAS } from './reputationEngine.js';
+import { countsTowardReputation } from './reputationEngine.js';
 
 /**
  * Valid event types that can be recorded.
@@ -17,8 +17,6 @@ export const EVENT_TYPES = {
   CARD_COMPLETE:           'card_complete',
   CARD_COMPLETE_OVERDUE:   'card_complete_overdue',
   COMMENT_POSTED:          'comment_posted',
-  PEER_EVAL_HIGH:          'peer_eval_received_high',
-  PEER_EVAL_LOW:           'peer_eval_received_low',
   STREAK_DAY:              'streak_day',
   FREELOADER_FLAGGED:      'freeloaded_flagged',
   APPEAL_ACCEPTED:         'appeal_accepted',
@@ -132,5 +130,7 @@ export async function calculateGlobalXP(userId) {
  */
 export async function calculateTotalReputation(userId) {
   const events = await getUserEvents(userId);
-  return events.reduce((sum, e) => sum + (e.repDelta || 0), 0);
+  return events
+    .filter(countsTowardReputation)
+    .reduce((sum, e) => sum + (e.repDelta || 0), 0);
 }

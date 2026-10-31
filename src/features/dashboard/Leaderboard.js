@@ -1,5 +1,5 @@
 import { STORES, get, getAll, getAllByIndex, put, addToSyncQueue } from '../../services/indexedDBService.js';
-import { calculateBoardPoints, recordEvent, EVENT_TYPES } from '../../core/eventEngine.js';
+import { calculateBoardPoints } from '../../core/eventEngine.js';
 import { calculateAllContributionScores } from '../../core/scoringEngine.js';
 import { calculateAllPEScores } from '../../core/peerEvaluationEngine.js';
 import { getBadgeById } from '../../core/badgeEngine.js';
@@ -7,7 +7,6 @@ import { escapeHtml, generateId } from '../../utils/helpers.js';
 import { currentUser } from '../../services/authService.js';
 import { sidebarHTML, bindSidebarEvents } from '../members/MemberList.js';
 import { getTerm } from '../../services/themeService.js';
-import { notify } from '../../services/notificationService.js';
 import { ICONS } from '../../assets/icons/icons.js';
 import { Chart } from 'chart.js/auto';
 
@@ -251,7 +250,7 @@ export async function renderEvaluation(groupId) {
         </header>
         
         <div class="leaderboard-container">
-          <p style="color:var(--text-secondary); margin-bottom: 24px;">Rate your teammates' contributions. This confidentially adjusts their total points and standing on the leaderboard.</p>
+          <p style="color:var(--text-secondary); margin-bottom: 24px;">Rate your teammates' contributions. Your ratings are private: teammates never see the individual ratings you give.</p>
 
           ${others.length === 0 ? '<div class="empty-state">You are the only member in this group.</div>' : ''}
 
@@ -352,45 +351,11 @@ export async function renderEvaluation(groupId) {
       await put(STORES.PEER_REVIEWS, review);
       await addToSyncQueue({ collection: 'peerReviews', docId: reviewId, operation: 'update', data: review });
 
-      // Calculate new average for the evaluatee
-      const allReviewsForEvaluatee = (await getAll(STORES.PEER_REVIEWS))
-        .filter(r => r.groupId === groupId && (r.evaluateeId === evaluateeId || r.evaluateeId === evaluatee?.uid || r.evaluateeUid === evaluatee?.uid));
-      
-      const newAvg = allReviewsForEvaluatee.length > 0 
-        ? allReviewsForEvaluatee.reduce((sum, r) => sum + r.score, 0) / allReviewsForEvaluatee.length
-        : score;
-      
-      if (evaluatee) {
-        evaluatee.averagePeerScore = newAvg;
-        await put(STORES.MEMBERS, evaluatee);
-      }
-
-      // Record Peer Eval Rep Event
-      let eventType = null;
-      let repDelta = 0;
-      if (newAvg >= 4.0) { eventType = EVENT_TYPES.PEER_EVAL_HIGH; repDelta = 15; }
-      else if (newAvg < 2.5) { eventType = EVENT_TYPES.PEER_EVAL_LOW; repDelta = -20; }
-      
-      if (eventType && evaluatee) {
-        await recordEvent({
-          eventType,
-          userId: evaluatee.uid,
-          memberId: evaluatee.id,
-          boardId: groupId,
-          repDelta,
-          metadata: { avgScore: newAvg, reviewId }
-        });
-      }
-
-      // Notify the evaluatee
-      if (evaluatee) {
-        await notify({
-          uid: evaluatee.uid, type: 'evaluation_received',
-          title: 'New Peer Evaluation',
-          message: 'You received a new peer evaluation',
-          icon: '⭐', actionLink: `#/group/${groupId}/leaderboard`, groupId
-        });
-      }
+      // E2a: nothing else happens on submit. A reviewer's device only holds the
+      // reviews they wrote, so any "average" here would be their own rating, and
+      // events, reputation, member records and notifications are visible to (or
+      // sent to) the evaluatee. The consent form promises individual ratings are
+      // never shown to groupmates, so a rating must not change anything they see.
 
       showToast(`Evaluation for ${evaluatee?.displayName || 'teammate'} submitted! ⭐`);
 
