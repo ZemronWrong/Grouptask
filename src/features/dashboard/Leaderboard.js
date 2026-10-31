@@ -161,8 +161,8 @@ export async function renderLeaderboard(groupId) {
           <div class="leaderboard-charts" style="margin-top: 40px;">
             <div style="background: var(--bg-card); border-radius: 16px; padding: 24px; box-shadow: var(--shadow-md); border: 1px solid var(--border); display: flex; flex-direction: column;">
               <h3 style="font-family: var(--font-heading); margin-bottom: 16px; color: var(--text); font-size: 1.1rem; letter-spacing: 0.5px;">Board Points Comparison</h3>
-              <div style="flex-grow: 1; min-height: 250px; position: relative;">
-                <canvas id="pointsChart"></canvas>
+              <div class="chart-box">
+                <canvas id="pointsChart" role="img" aria-label="Board points per member"></canvas>
               </div>
             </div>
           </div>

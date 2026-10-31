@@ -392,7 +392,7 @@ export async function openTaskDetailModal(task, groupId, members, viewIsAdmin, m
 
   container.innerHTML = `
     <div class="modal-overlay" id="task-detail-modal" style="display:flex;">
-      <div class="modal" style="max-width:620px; max-height:85vh; display:flex; flex-direction:column;">
+      <div class="modal" style="max-width:620px;">
         <div class="modal-header">
           <h2>${escapeHtml(task.title)}</h2>
           <button class="btn-icon" id="btn-close-detail-modal" aria-label="Close">✕</button>

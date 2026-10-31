@@ -20,13 +20,15 @@ const KEY_PREFIX = 'grouptask_tour_';
 
 // ── Steps ─────────────────────────────────────────────────────────────────────
 
+// H1/H2: in the narrow layout a hidden column is pointed at through its tab,
+// and the leaderboard link through the menu button when the sidebar is a drawer.
 const SEL = {
-  columns:   '.kanban-wrapper',
-  addTask:   '.btn-add-task-col',
+  columns:   '.kanban-area',
+  addTask:   ['.btn-add-task-col', '.column-tab[data-status="todo"]'],
   dragCard:  ['.task-card[draggable="true"]', '.kanban-wrapper'],
-  pending:   '.kanban-column[data-status="pending-approval"]',
-  completed: '#completed-panel',
-  score:     '.sidebar-link[href$="/leaderboard"]',
+  pending:   ['.kanban-column[data-status="pending-approval"]', '.column-tab[data-status="pending-approval"]'],
+  completed: ['#completed-panel', '.column-tab[data-status="done"]'],
+  score:     ['.sidebar-link[href$="/leaderboard"]', '.nav-menu-btn'],
 };
 
 /** Ghost card picked up, carried one column over and dropped, on a loop. */

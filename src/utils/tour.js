@@ -9,7 +9,9 @@
  *   demo     — optional HTML shown inside the popup (e.g. a CSS animation).
  *
  * The overlay lives on <body>, outside #app, and looks its target up again on
- * every reposition, so it survives the page re-rendering underneath it. It
+ * every reposition, so it survives the page re-rendering underneath it. H4: it
+ * also follows its target while the window is resized or snapped (a
+ * ResizeObserver on the page and the target, throttled to one frame). It
  * covers the whole page while open, so nothing behind it can be clicked or
  * dragged: the tour itself never changes any data.
  */
@@ -66,11 +68,25 @@ function findTarget(selector) {
   for (const sel of list) {
     for (const el of document.querySelectorAll(sel)) {
       if (el.closest('.tour-overlay')) continue;
+      // Skip elements hidden with visibility (e.g. a closed menu drawer)
+      if (el.checkVisibility && !el.checkVisibility({ visibilityProperty: true })) continue;
       const r = el.getBoundingClientRect();
       if (r.width > 0 && r.height > 0) return el;
     }
   }
   return null;
+}
+
+/**
+ * Bring a target into view. A target cut off at the side (a column in the
+ * sideways-scrolling board) is aligned to its start, which is also where the
+ * board row snaps, so the snap doesn't pull it back out of view.
+ */
+function revealTarget(target, behavior) {
+  if (!target) return;
+  const r = target.getBoundingClientRect();
+  const cutOff = r.left < 0 || r.right > window.innerWidth;
+  target.scrollIntoView({ block: 'nearest', inline: cutOff ? 'start' : 'nearest', behavior });
 }
 
 function prefersReducedMotion() {
@@ -102,10 +118,17 @@ export function startTour(steps, { onFinish } = {}) {
   const previousFocus = document.activeElement;
   let index = 0;
   let frame = 0;
+  let observedTarget = null;
+  const resizeObserver = typeof ResizeObserver === 'function' ? new ResizeObserver(() => schedule()) : null;
 
   function position() {
     frame = 0;
     const target = findTarget(shown[index].selector);
+    if (resizeObserver && target !== observedTarget) {
+      if (observedTarget) resizeObserver.unobserve(observedTarget);
+      if (target) resizeObserver.observe(target);
+      observedTarget = target;
+    }
     let rect = null;
     if (target) {
       const r = target.getBoundingClientRect();
@@ -144,8 +167,7 @@ export function startTour(steps, { onFinish } = {}) {
         <button type="button" class="btn btn-primary btn-sm" data-tour="next">${last ? 'Done' : 'Next'}</button>
       </div>
     `;
-    const target = findTarget(step.selector);
-    target?.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
+    revealTarget(findTarget(step.selector), prefersReducedMotion() ? 'auto' : 'smooth');
     position();
     popup.querySelector('[data-tour="next"]').focus({ preventScroll: true });
   }
@@ -197,12 +219,26 @@ export function startTour(steps, { onFinish } = {}) {
 
   function onHashChange() { close('navigate'); }
 
+  // H4: once the window stops changing size, bring the target back into view
+  // (a column can end up half off-screen in the sideways-scrolling board)
+  let resizeTimer = 0;
+  function onResize() {
+    schedule();
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => {
+      revealTarget(findTarget(shown[index].selector), 'auto');
+      schedule();
+    }, 150);
+  }
+
   function close(reason) {
     if (active !== controller) return;
     active = null;
     observer.disconnect();
+    resizeObserver?.disconnect();
     document.removeEventListener('keydown', onKey, true);
-    window.removeEventListener('resize', schedule);
+    window.removeEventListener('resize', onResize);
+    clearTimeout(resizeTimer);
     window.removeEventListener('scroll', schedule, true);
     window.removeEventListener('hashchange', onHashChange);
     if (frame) cancelAnimationFrame(frame);
@@ -216,10 +252,12 @@ export function startTour(steps, { onFinish } = {}) {
 
   document.body.appendChild(overlay);
   document.addEventListener('keydown', onKey, true);
-  window.addEventListener('resize', schedule);
+  window.addEventListener('resize', onResize);
   window.addEventListener('scroll', schedule, true);
   window.addEventListener('hashchange', onHashChange);
   observer.observe(document.body, { childList: true, subtree: true });
+  resizeObserver?.observe(document.documentElement);
+  resizeObserver?.observe(popup);
   render();
   return controller;
 }

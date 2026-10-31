@@ -158,11 +158,23 @@ function startDemo(root) {
   }
 
   // F1: on narrow screens the board scrolls sideways; keep the moving card in view
-  function followCard(col) {
+  function followCard(col, behavior = 'smooth') {
     const overflow = scroller.scrollWidth - scroller.clientWidth;
     if (overflow <= 0) return;
-    scroller.scrollTo({ left: overflow * (col / (DEMO_COLUMNS.length - 1)), behavior: 'smooth' });
+    scroller.scrollTo({ left: overflow * (col / (DEMO_COLUMNS.length - 1)), behavior });
   }
+
+  // H4: the window was resized or snapped: keep following the card at the new size
+  let resizeFrame = 0;
+  const resizeObserver = new ResizeObserver(() => {
+    if (!root.isConnected) { resizeObserver.disconnect(); return; }
+    if (resizeFrame) return;
+    resizeFrame = requestAnimationFrame(() => {
+      resizeFrame = 0;
+      followCard(DEMO_COLUMNS.findIndex((c) => c.key === DEMO_STEPS[step].column), 'auto');
+    });
+  });
+  resizeObserver.observe(scroller);
 
   function schedule() {
     clearTimeout(timer);

@@ -2706,8 +2706,11 @@ textarea { resize: vertical; }
   border-radius: var(--radius-xl);
   width: 100%;
   max-width: 520px;
-  max-height: 85vh;
-  overflow-y: auto;
+  /* H4: always fits the window; the body scrolls inside */
+  max-height: 90dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   box-shadow: var(--shadow-lg), var(--shadow-glow);
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
@@ -2738,7 +2741,13 @@ textarea { resize: vertical; }
   display: flex;
   flex-direction: column;
   gap: 16px;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
 }
+.modal > .modal-header, .modal > .modal-footer { flex-shrink: 0; }
+/* A footer inside a scrolling form stays reachable at the bottom */
+.modal-body > .modal-footer { position: sticky; bottom: -24px; z-index: 1; margin: 0 -24px -24px; }
 
 .form-actions {
   display: flex;
@@ -4450,6 +4459,17 @@ textarea { resize: vertical; }
 :root[data-nav="drawer"][data-drawer="open"] .nav-backdrop { display: block; position: fixed; inset: 0; z-index: 999; background: rgba(0, 0, 0, 0.45); }
 :root[data-nav="drawer"] .sidebar-collapse-btn span { font-size: 0; }
 :root[data-nav="drawer"] .sidebar-collapse-btn span::before { content: '✕'; font-size: 1rem; }
+
+/* ── H4: modals and popups always fit the window ── */
+@media (max-width: 700px) {
+  .modal-overlay { padding: 16px; }
+  .modal-header { padding: 16px 18px; }
+  .modal-body { padding: 18px; }
+  .modal-body > .modal-footer { bottom: -18px; margin: 0 -18px -18px; padding: 12px 18px; }
+}
+.confirm-dialog { max-height: 90dvh; overflow-y: auto; max-width: min(420px, calc(100vw - 32px)); }
+.member-popup { max-height: 90dvh; overflow-y: auto; max-width: calc(100vw - 32px) !important; }
+.chart-box { position: relative; width: 100%; min-width: 0; height: clamp(220px, 38vh, 320px); }
 
 .member-count-label { white-space: nowrap; }
 /* On narrow windows "Connected · All changes saved" shrinks to its dot (other states keep their words) */
