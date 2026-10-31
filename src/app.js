@@ -1,4 +1,4 @@
-import { addRoute, initRouter, navigate, reloadCurrentRoute } from './services/router.js';
+import { addRoute, initRouter, navigate, reloadCurrentRoute, currentPath } from './services/router.js';
 import { onAuthChange, currentUser, authReady } from './services/authService.js';
 import { openDB, getAllByIndex, STORES } from './services/indexedDBService.js';
 import { initTheme } from './services/themeService.js';
@@ -249,7 +249,7 @@ export async function boot() {
   await authReady();
 
   onAuthChange((user) => {
-    const path = window.location.hash.slice(1) || '/welcome';
+    const path = currentPath();
     if (!user) {
       syncModule?.then((sync) => sync.stopSync());
       bootstrapUserDataOnce.reset();
@@ -262,7 +262,7 @@ export async function boot() {
     bootstrapUserDataOnce(user.uid).then((downloaded) => {
       if (downloaded) refreshAfterDownload();
     }).catch(() => { /* offline or refused: the next sign-in or reload tries again */ });
-    if (GUEST_PATHS.includes(path) || path === '') navigate('#/dashboard');
+    if (GUEST_PATHS.includes(path)) navigate('#/dashboard');
   });
 
   initRouter();

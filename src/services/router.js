@@ -41,8 +41,14 @@ function matchRoute(path) {
   return null;
 }
 
+/** The path in the address bar; the bare site address (no hash, or just "#/") is the welcome page. */
+export function currentPath() {
+  const path = window.location.hash.slice(1);
+  return path === '' || path === '/' ? '/welcome' : path;
+}
+
 function onHashChange() {
-  const path = window.location.hash.slice(1) || '/welcome';
+  const path = currentPath();
   const matched = matchRoute(path);
   if (matched) {
     return matched.handler(matched.params);

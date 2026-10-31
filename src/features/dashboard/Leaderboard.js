@@ -74,7 +74,7 @@ export async function renderLeaderboard(groupId) {
       <div class="main-content">
         <header class="board-header">
           <div class="board-header-left">
-            <h1 class="board-title">${ICONS.trophy} Leaderboard and Data Visualization</h1>
+            <h1 class="board-title">${ICONS.trophy} Leaderboard</h1>
           </div>
         </header>
 
@@ -275,7 +275,7 @@ export async function renderEvaluation(groupId) {
       <div class="main-content">
         <header class="board-header">
           <div class="board-header-left">
-            <h1 class="board-title">${ICONS.star} Peer Evaluation</h1>
+            <h1 class="board-title">${ICONS.star} Peer evaluation</h1>
           </div>
         </header>
         

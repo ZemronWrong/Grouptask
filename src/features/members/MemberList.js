@@ -49,7 +49,7 @@ export async function renderMembers(groupId) {
       <div class="main-content">
         <header class="board-header">
           <div class="board-header-left">
-            <h1 class="board-title">${ICONS.users} Team & Risks</h1>
+            <h1 class="board-title">${ICONS.users} Team</h1>
           </div>
         </header>
 
@@ -192,13 +192,13 @@ export function sidebarHTML(groupId, currentPath, members, tasks) {
           <span>${ICONS.clipboard}</span> Board
         </a>
         <a href="#/group/${groupId}/leaderboard" class="sidebar-link ${currentPath === 'leaderboard' ? 'active' : ''}">
-          <span>${ICONS.trophy}</span> Leaderboard and Data Visualization
+          <span>${ICONS.trophy}</span> Leaderboard
         </a>
         <a href="#/group/${groupId}/evaluate" class="sidebar-link ${currentPath === 'evaluate' ? 'active' : ''}">
-          <span>${ICONS.star}</span> Peer Eval
+          <span>${ICONS.star}</span> Peer evaluation
         </a>
         <a href="#/group/${groupId}/members" class="sidebar-link ${currentPath === 'members' ? 'active' : ''}">
-          <span>${ICONS.users}</span> Team & Risks
+          <span>${ICONS.users}</span> Team
         </a>
         <a href="#/group/${groupId}/audit" class="sidebar-link ${currentPath === 'audit' ? 'active' : ''}">
           <span>${ICONS.clipboard}</span> Activity
