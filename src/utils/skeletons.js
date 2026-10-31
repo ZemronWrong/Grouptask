@@ -31,18 +31,20 @@ export function skeletonListHTML(rows = 3) {
 }
 
 function boardSkeleton() {
-  const column = (cards) => `
-    <div class="kanban-column">
+  const column = (cards, status) => `
+    <div class="kanban-column" data-status="${status}">
       <div class="column-header">${bar('55%', 14)}</div>
       <div class="column-cards">${Array.from({ length: cards }, skeletonCardHTML).join('')}</div>
     </div>
   `;
   return `
-    <div class="app-layout">
+    <div class="app-layout board-layout">
       ${sidebarSkeleton()}
       <div class="main-content">
         <header class="board-header">${bar('220px', 26)}</header>
-        <div class="kanban-wrapper"><div class="kanban-board">${column(3)}${column(2)}${column(1)}</div></div>
+        <div class="kanban-area" data-active-tab="todo">
+          <div class="kanban-wrapper"><div class="kanban-board">${column(3, 'todo')}${column(2, 'in-progress')}${column(1, 'pending-approval')}</div></div>
+        </div>
       </div>
     </div>
   `;

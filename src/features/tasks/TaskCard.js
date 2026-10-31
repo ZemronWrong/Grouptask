@@ -87,7 +87,7 @@ export function taskCardHTML(task, members, proofs, comments, viewIsAdmin, me, p
         </div>
         ${canDrag ? '<span class="drag-handle" title="Drag to move" aria-hidden="true">⋮⋮</span>' : ''}
       </div>
-      <h3 class="task-title">${escapeHtml(task.title)}</h3>
+      <h3 class="task-title" title="${escapeHtml(task.title)}">${escapeHtml(task.title)}</h3>
       ${task.description ? `<p class="task-desc">${escapeHtml(task.description)}</p>` : ''}
 
       ${proofBadge}

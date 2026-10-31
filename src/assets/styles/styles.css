@@ -704,6 +704,8 @@ textarea { resize: vertical; }
 .main-content {
   flex: 1;
   min-width: 0;
+  /* H1/H5: page parts size themselves from the space they have, not the screen */
+  container: main / inline-size;
 }
 
 /* ═══════════════════════════════════════════
@@ -786,6 +788,7 @@ textarea { resize: vertical; }
 .avatar-sm { width: 22px; height: 22px; font-size: 0.55rem; }
 
 .pulse-badge {
+  white-space: nowrap;
   animation: pulse 2s infinite;
   background: linear-gradient(135deg, var(--danger), #e74c3c);
   color: #fff;
@@ -1052,31 +1055,47 @@ textarea { resize: vertical; }
 /* ═══════════════════════════════════════════
    KANBAN BOARD
    ═══════════════════════════════════════════ */
-.kanban-wrapper {
+/* H1: the board fills the window under its header and each column scrolls on
+   its own. Its layout follows the board area's own width (container queries):
+   wide = three columns + Completed panel, medium = one sideways-scrolling row,
+   narrow = one column at a time behind tabs (see "H: half-screen" below). */
+.board-layout { height: 100dvh; min-height: 0; }
+.board-layout .main-content { display: flex; flex-direction: column; min-height: 0; }
+.kanban-area {
+  flex: 1;
+  min-height: 0;
   display: flex;
-  gap: 0;
-  align-items: flex-start;
-  min-height: calc(100dvh - 75px);
-  /* Allow horizontal scroll on the wrapper if columns cannot fit */
-  overflow-x: auto;
+  flex-direction: column;
+  position: relative;
+  container: board / inline-size;
+}
+.kanban-wrapper {
+  --board-pad: clamp(12px, 2.4cqi, 24px);
+  --board-gap: clamp(12px, 2cqi, 20px);
+  --col-w: clamp(240px, 30cqi, 270px);
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: stretch;
 }
 .kanban-board {
   display: grid;
-  /* Columns will not shrink below 220px -- prevents overlap on smaller windows */
-  grid-template-columns: repeat(3, minmax(220px, 1fr));
-  gap: 20px;
-  padding: 24px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-rows: minmax(0, 1fr);
+  gap: var(--board-gap);
+  padding: var(--board-pad);
   flex: 1;
   min-width: 0;
 }
 .completed-panel {
-  width: 300px;
+  width: clamp(240px, 26cqi, 300px);
   flex-shrink: 0;
-  padding: 24px 20px;
+  padding: var(--board-pad) 16px var(--board-pad) 20px;
   border-left: 1px solid var(--border);
   background: rgba(99, 102, 241, 0.03);
-  min-height: calc(100dvh - 75px);
-  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 .completed-panel .column-title {
   color: var(--success, #22c55e);
@@ -1085,6 +1104,8 @@ textarea { resize: vertical; }
   background: transparent;
   display: flex;
   flex-direction: column;
+  min-width: 0;
+  min-height: 0;
 }
 .kanban-column.drag-over,
 .completed-panel.drag-over {
@@ -1093,16 +1114,15 @@ textarea { resize: vertical; }
   border: 1px dashed var(--primary);
 }
 /* D5: while dragging, show where this card can and can't be dropped */
-.kanban-wrapper.is-dragging .drop-allowed {
+.kanban-area.is-dragging .drop-allowed {
   outline: 2px dashed var(--primary);
-  outline-offset: 4px;
+  outline-offset: -2px;
   border-radius: var(--radius-lg);
 }
-.kanban-wrapper.is-dragging .completed-panel.drop-allowed { outline-offset: -4px; }
-.kanban-wrapper.is-dragging .drop-blocked { position: relative; }
+.kanban-area.is-dragging .drop-blocked { position: relative; }
 /* Dim the contents, not the column itself, so the label stays readable */
-.kanban-wrapper.is-dragging .drop-blocked > * { opacity: 0.45; }
-.kanban-wrapper.is-dragging .drop-blocked[data-drop-label]::before {
+.kanban-area.is-dragging .drop-blocked > * { opacity: 0.45; }
+.kanban-area.is-dragging .drop-blocked[data-drop-label]::before {
   content: attr(data-drop-label);
   position: absolute;
   top: 48px;
@@ -1152,11 +1172,13 @@ textarea { resize: vertical; }
 }
 .column-cards {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 14px;
-  padding-right: 6px;
+  /* room for the hover lift and focus ring inside the scroll box */
+  padding: 4px 6px 12px 2px;
 }
 
 /* ═══════════════════════════════════════════
@@ -1186,8 +1208,8 @@ textarea { resize: vertical; }
 }
 .task-card.dragging { opacity: 0.5; transform: rotate(2deg); }
 
-.task-card-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
-.task-badges { display: flex; gap: 6px; flex-wrap: wrap; }
+.task-card-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; margin-bottom: 10px; }
+.task-badges { display: flex; gap: 6px; flex-wrap: wrap; min-width: 0; }
 .task-reward {
   font-family: var(--font-heading);
   color: var(--accent);
@@ -1216,6 +1238,12 @@ textarea { resize: vertical; }
   font-size: 1rem;
   color: var(--text);
   margin-bottom: 6px;
+  /* H5: at most three lines; the full title is in the tooltip and the detail view */
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
 }
 .task-desc {
   font-size: 0.9rem;
@@ -1229,12 +1257,15 @@ textarea { resize: vertical; }
 }
 .task-card-bottom {
   display: flex;
+  flex-wrap: wrap;
+  gap: 6px 8px;
   justify-content: space-between;
   align-items: flex-end;
   border-top: 1px solid var(--border);
   padding-top: 10px;
 }
-.task-assignee { display: flex; align-items: center; gap: 8px; }
+.task-assignee { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.task-assignee > div:last-child { min-width: 0; }
 .task-assignee-label {
   font-size: 0.6rem;
   font-family: var(--font-heading);
@@ -1248,6 +1279,10 @@ textarea { resize: vertical; }
   font-size: 0.85rem;
   font-family: var(--font-heading);
   color: var(--text);
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .task-actions { display: flex; gap: 4px; }
 
@@ -1447,56 +1482,13 @@ textarea { resize: vertical; }
    RESPONSIVE BREAKPOINTS
    =============================================== */
 
-/* -- Mid-range: tablets / small laptops (901px-1200px) -- */
-@media (max-width: 1200px) {
-  /* Narrow sidebar so board columns have more room */
-  :root { --sidebar-width: 200px; }
-
-  /* Kanban: enforce min column width so they never collapse to unusable sizes */
-  .kanban-board {
-    grid-template-columns: repeat(3, minmax(180px, 1fr));
-    gap: 14px;
-    padding: 16px;
-    overflow-x: auto;
-  }
-
-  /* Completed panel: slightly narrower on mid screens */
-  .completed-panel { width: 240px; }
-
-  /* Board header: allow wrapping so action buttons don't bleed off-screen */
-  .board-header { flex-wrap: wrap; gap: 8px; padding: 12px 16px; }
-  .board-header-right { flex-wrap: wrap; gap: 6px; }
-  .board-title { font-size: 1.1rem; }
-}
+/* (H1/H2: the board, sidebar and page headers adapt with container queries and
+   the nav modes in "H: half-screen" below, not with these screen widths.) */
 
 /* -- Narrow: phones / very small windows (<=900px) -- */
 @media (max-width: 900px) {
   /* Dashboard */
   .dashboard-layout { grid-template-columns: 1fr; }
-
-  /* Hide sidebar, rely on full-width layout */
-  .sidebar { display: none; }
-
-  /* Kanban: stack everything vertically */
-  .kanban-wrapper { flex-direction: column; }
-  .kanban-board {
-    grid-template-columns: 1fr;
-    gap: 12px;
-    padding: 12px;
-    overflow-x: unset;
-  }
-  .completed-panel {
-    width: 100%;
-    min-height: unset;
-    border-left: none;
-    border-top: 1px solid var(--border);
-  }
-
-  /* Board header: stack rows */
-  .board-header { flex-wrap: wrap; gap: 8px; padding: 10px 12px; }
-  .board-header-left,
-  .board-header-right { flex-wrap: wrap; gap: 6px; width: 100%; }
-  .board-title { font-size: 1rem; }
 
   /* Leaderboard */
   .lb-row { grid-template-columns: 40px 1.2fr 0.8fr 1fr; font-size: 0.8rem; padding: 10px 12px; }
@@ -1518,8 +1510,6 @@ textarea { resize: vertical; }
 @media (max-width: 480px) {
   .board-header-right .btn { font-size: 0.72rem; padding: 5px 8px; }
   .user-badge { padding: 4px 8px 4px 4px; font-size: 0.75rem; }
-  .kanban-board { padding: 8px; gap: 10px; }
-  .task-card { padding: 12px; }
   .profile-stats-grid { grid-template-columns: 1fr; }
 }
 
@@ -4223,4 +4213,143 @@ textarea { resize: vertical; }
 .toast-action:focus-visible, .task-card:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
   outline: 2px solid var(--border-focus, var(--primary));
   outline-offset: 2px;
+}
+
+/* ═══════════════════════════════════════════
+   H: HALF-SCREEN WINDOWS (board layouts, nav modes, compact parts)
+   ═══════════════════════════════════════════ */
+
+/* ── H1: medium board (about 600–1000 px of board): one sideways-scrolling row ── */
+@container board (width < 1000px) {
+  .kanban-wrapper {
+    overflow-x: auto;
+    overflow-y: hidden;
+    overscroll-behavior-x: contain;
+    scroll-snap-type: x proximity;
+    scroll-padding-inline: var(--board-pad);
+    gap: var(--board-gap);
+    padding: var(--board-pad);
+  }
+  /* Snapping would pull each small auto-scroll step back while a card is dragged */
+  .kanban-area.is-dragging .kanban-wrapper { scroll-snap-type: none; }
+  .kanban-board { display: flex; flex: none; gap: var(--board-gap); padding: 0; }
+  .kanban-column, .completed-panel {
+    flex: 0 0 var(--col-w);
+    width: var(--col-w);
+    scroll-snap-align: start;
+  }
+  /* Completed becomes a normal fourth column */
+  .completed-panel { padding: 0; border-left: none; background: transparent; }
+  /* Slightly more compact cards */
+  .task-card { padding: 12px; }
+  .task-desc { -webkit-line-clamp: 2; margin-bottom: 10px; }
+}
+
+/* Edge shadows while there are more columns to the left/right */
+.kanban-area::before, .kanban-area::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 28px;
+  z-index: 3;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+.kanban-area::before { left: 0; background: linear-gradient(to right, color-mix(in srgb, var(--text) 16%, transparent), transparent); }
+.kanban-area::after { right: 0; background: linear-gradient(to left, color-mix(in srgb, var(--text) 16%, transparent), transparent); }
+.kanban-area.more-left::before, .kanban-area.more-right::after { opacity: 1; }
+
+/* ── H1: narrow board (under about 600 px): one column at a time behind tabs ── */
+.column-tabs { display: none; }
+@container board (width < 600px) {
+  .column-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    padding: 8px 12px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .kanban-wrapper { flex-direction: column; padding: 12px; }
+  .kanban-board { display: contents; }
+  .kanban-column, .completed-panel { display: none; flex: 1; width: auto; min-height: 0; padding: 0; border: none; background: none; }
+  .kanban-area[data-active-tab="todo"] .kanban-column[data-status="todo"],
+  .kanban-area[data-active-tab="in-progress"] .kanban-column[data-status="in-progress"],
+  .kanban-area[data-active-tab="pending-approval"] .kanban-column[data-status="pending-approval"],
+  .kanban-area[data-active-tab="done"] .completed-panel { display: flex; }
+  /* The tab already names the column and its count */
+  .kanban-column > .column-header, .completed-panel > .column-header { display: none; }
+}
+.column-tab {
+  flex: 1 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 7px 10px;
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: var(--radius) var(--radius) 0 0;
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-family: var(--font-heading);
+  font-size: 0.8rem;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  position: relative;
+}
+.column-tab:hover { color: var(--primary); background: var(--primary-soft); }
+.column-tab.active { color: var(--primary); background: var(--bg-card); border-color: var(--border); box-shadow: inset 0 -2px 0 var(--primary); }
+.column-tab:focus-visible { outline: 2px solid var(--border-focus, var(--primary)); outline-offset: -2px; }
+.column-tab .column-count { width: auto; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 11px; }
+/* H3: tabs are drop targets while a card is dragged */
+.kanban-area.is-dragging .column-tab.drop-allowed { outline: 2px dashed var(--primary); outline-offset: -2px; border-radius: var(--radius) var(--radius) 0 0; }
+.kanban-area.is-dragging .column-tab.drag-over { background: var(--primary-soft); color: var(--primary); }
+.kanban-area.is-dragging .column-tab.drop-blocked[data-drop-label]::before {
+  position: static;
+  transform: none;
+  order: 3;
+  padding: 1px 6px;
+  font-size: 0.65rem;
+}
+
+/* ── H5: compact page header ── */
+.board-title { min-width: 0; }
+.board-title-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.board-header-left { min-width: 0; }
+@container main (width < 1000px) {
+  .board-header { padding: 12px 16px; gap: 8px; }
+  .board-title { font-size: 1.1rem; }
+  .board-header-right { gap: 8px; }
+}
+@container main (width < 760px) {
+  .board-header { padding: 8px 12px; }
+  .board-header-left { flex: 1; }
+  .board-header-right { flex-shrink: 0; gap: 6px; }
+  .board-title { font-size: 1rem; }
+  /* Share and the member count shrink to icons (labels stay in tooltips) */
+  .board-header .btn-label, .board-header .member-count-label { display: none; }
+  .board-header .member-avatar-stack { margin-right: 0 !important; }
+  .board-header .pulse-badge { max-width: 30cqi; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+}
+@container main (width < 420px) {
+  .board-header .avatar-stack-item:nth-child(n+3) { display: none; }
+}
+
+.member-count-label { white-space: nowrap; }
+/* On narrow windows "Connected · All changes saved" shrinks to its dot (other states keep their words) */
+@media (max-width: 700px) {
+  #connection-status.cs-connected { padding: 7px; }
+  #connection-status.cs-connected .cs-label { display: none; }
+}
+
+/* ── H3: the Undo toast stays whole and clickable on narrow windows ── */
+.toast { max-width: 100%; }
+.toast-action { flex-shrink: 0; }
+@media (max-width: 480px) {
+  .toast-region { bottom: 64px; }
+  .toast { gap: 10px; padding: 10px 12px; }
 }

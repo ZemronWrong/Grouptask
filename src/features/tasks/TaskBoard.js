@@ -8,6 +8,9 @@
  *   - Initialise drag-and-drop for every non-viewer.
  *   - Apply remote changes card by card (refreshBoard), without a full re-render.
  *   - Show the first-time board tutorial (boardTour) once the board is on screen.
+ *   - H1: the board lays itself out from its own width (CSS container queries):
+ *     wide = three columns + Completed panel, medium = one sideways-scrolling
+ *     row, narrow = one column at a time behind column tabs.
  *
  * Business logic (save, move, review, notify) lives in boardEvents.js.
  * HTML templates live in TaskCard.js and TaskModal.js.
@@ -32,6 +35,7 @@ import { bindBoardEvents, moveTask, undoMove, openProofSubmitModal, openProofRev
 import { showToast } from '../../utils/ui.js';
 import { dropBlockReason } from './taskPermissions.js';
 import { maybeStartBoardTour, startBoardTour } from './boardTour.js';
+import { readBoardTab, writeBoardTab, showBoardTab, stepTab } from './boardTabs.js';
 
 // ── Module-level state (preserved across re-renders within the same session) ──
 let currentGroupId      = null;
@@ -53,7 +57,7 @@ function getStatuses() {
   return [
     { key: 'todo',             label: getTerm('todoColumn'), icon: ICONS.todo       },
     { key: 'in-progress',      label: 'In Progress',         icon: ICONS.inProgress },
-    { key: 'pending-approval', label: 'Pending Approval',    icon: ICONS.pending    },
+    { key: 'pending-approval', label: 'Pending Approval',    icon: ICONS.pending,  tab: 'Pending' },
     { key: 'done',             label: 'Completed',           icon: ICONS.done       },
   ];
 }
@@ -134,6 +138,7 @@ export async function renderTaskBoard(groupId) {
   const data = await loadBoardData(groupId);
   const { group, tasks, members, groupProofs, profileMap, me, isAdmin, pendingProofsCount } = data;
   const STATUSES = getStatuses();
+  const activeTab = readBoardTab(groupId);
   cardHtmlCache.clear();
 
   // Build member avatar stack HTML for header
@@ -141,7 +146,7 @@ export async function renderTaskBoard(groupId) {
   const shownMembers = members.slice(0, MAX_AVATAR_SHOW);
   const extraCount = members.length - MAX_AVATAR_SHOW;
   const memberAvatarStack = `
-    <div class="member-avatar-stack" id="btn-board-members" title="Board Members" style="cursor:pointer; display:flex; align-items:center; gap:4px; margin-right:8px;">
+    <div class="member-avatar-stack" id="btn-board-members" title="Board members (${members.length})" style="cursor:pointer; display:flex; align-items:center; gap:4px; margin-right:8px;">
       <div style="display:flex; flex-direction:row-reverse; align-items:center;">
         ${shownMembers.map((m, i) => {
           const prof = profileMap[m.uid];
@@ -152,32 +157,42 @@ export async function renderTaskBoard(groupId) {
         }).join('')}
       </div>
       ${extraCount > 0 ? `<span style="font-size:0.75rem; color:var(--text-secondary); font-family:var(--font-heading);">+${extraCount}</span>` : ''}
-      <span style="font-size:0.75rem; color:var(--text-secondary); font-family:var(--font-heading); margin-left:2px;">${members.length} member${members.length !== 1 ? 's' : ''}</span>
+      <span class="member-count-label" style="font-size:0.75rem; color:var(--text-secondary); font-family:var(--font-heading); margin-left:2px;">${members.length} member${members.length !== 1 ? 's' : ''}</span>
     </div>
   `;
 
   app.innerHTML = `
-    <div class="app-layout">
+    <div class="app-layout board-layout">
       ${sidebarHTML(groupId, 'board', members, tasks)}
       <div class="main-content">
         <header class="board-header">
           <div class="board-header-left">
-            <h1 class="board-title">
+            <h1 class="board-title" title="${escapeHtml(group?.name || getTerm('appTitle'))}">
               <span class="board-title-icon">${getTerm('boardTitlePrefix')}</span>
-              ${escapeHtml(group?.name || getTerm('appTitle'))}
+              <span class="board-title-text">${escapeHtml(group?.name || getTerm('appTitle'))}</span>
             </h1>
           </div>
           <div class="board-header-right">
             ${isAdmin && pendingProofsCount > 0 ? pendingBadgeHTML(pendingProofsCount) : ''}
             ${memberAvatarStack}
-            <button class="btn btn-secondary btn-sm" id="btn-share-btn">
-              <span class="btn-icon-inline">${ICONS.link}</span> Share
+            <button class="btn btn-secondary btn-sm" id="btn-share-btn" title="Share" aria-label="Share">
+              <span class="btn-icon-inline">${ICONS.link}</span><span class="btn-label"> Share</span>
             </button>
             <button class="btn btn-secondary btn-sm btn-board-tour" id="btn-board-tour" type="button"
               title="How this board works" aria-label="How this board works">?</button>
           </div>
         </header>
 
+        <div class="kanban-area" id="kanban-area" data-active-tab="${activeTab}">
+        <div class="column-tabs" role="tablist" aria-label="Board columns">
+          ${STATUSES.map((s) => `
+            <button type="button" role="tab" class="column-tab${s.key === activeTab ? ' active' : ''}" data-status="${s.key}"
+              aria-selected="${s.key === activeTab}" tabindex="${s.key === activeTab ? 0 : -1}" title="${escapeHtml(s.label)}">
+              <span class="column-tab-label">${escapeHtml(s.tab || s.label)}</span>
+              <span class="column-count">${tasks.filter((t) => t.status === s.key).length}</span>
+            </button>
+          `).join('')}
+        </div>
         <div class="kanban-wrapper">
           <div class="kanban-board" id="kanban-board">
             ${STATUSES.filter(s => s.key !== 'done').map((s) => `
@@ -212,6 +227,7 @@ export async function renderTaskBoard(groupId) {
             </div>
           </aside>
         </div>
+        </div>
       </div>
     </div>
 
@@ -223,6 +239,7 @@ export async function renderTaskBoard(groupId) {
     <div id="task-detail-modal-container"></div>
   `;
   restoreScroll(scroll);
+  bindBoardLayout();
 
   // Update the shared context that delegated handlers read
   Object.assign(_boardContext, { groupId, members, group, tasks, viewIsAdmin: isAdmin, me, proofs: groupProofs, profileMap });
@@ -271,12 +288,65 @@ export async function renderTaskBoard(groupId) {
     }, (taskId, status) => {
       const task = _boardContext.tasks?.find((t) => t.id === taskId);
       return dropBlockReason(task, _boardContext.me, status);
+    }, {
+      // H3: holding a card over a column tab opens that column
+      onTabHover: (status) => selectBoardTab(status),
     });
     dragDropInitialised = true;
   }
 
   // D6: first visit to any board shows the tutorial (once per user)
   maybeStartBoardTour(me, uid);
+}
+
+// ── Layout (H1) ───────────────────────────────────────────────────────────────
+
+let rowObserver = null;
+
+/** Switch the narrow layout to another column and remember it for this board. */
+function selectBoardTab(status, opts) {
+  const area = document.getElementById('kanban-area');
+  if (!area || !currentGroupId) return;
+  writeBoardTab(currentGroupId, status);
+  showBoardTab(area, status, opts);
+  area.querySelector('.kanban-wrapper')?.scrollTo?.({ top: 0 });
+}
+
+/** Edge shadows on the sideways-scrolling row: is there more to the left/right? */
+function updateRowEdges() {
+  const area = document.getElementById('kanban-area');
+  const row = area?.querySelector('.kanban-wrapper');
+  if (!row) return;
+  const max = row.scrollWidth - row.clientWidth;
+  area.classList.toggle('more-left', max > 1 && row.scrollLeft > 1);
+  area.classList.toggle('more-right', max > 1 && row.scrollLeft < max - 1);
+}
+
+function bindBoardLayout() {
+  const area = document.getElementById('kanban-area');
+  if (!area) return;
+  const row = area.querySelector('.kanban-wrapper');
+
+  area.querySelector('.column-tabs')?.addEventListener('click', (e) => {
+    const tab = e.target.closest('.column-tab');
+    if (tab) selectBoardTab(tab.dataset.status);
+  });
+  area.querySelector('.column-tabs')?.addEventListener('keydown', (e) => {
+    const dir = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
+    if (!dir) return;
+    e.preventDefault();
+    selectBoardTab(stepTab(area.dataset.activeTab, dir), { focus: true });
+  });
+
+  // H4: recompute the shadows live while the window (or the row's content) changes size
+  let frame = 0;
+  const schedule = () => { if (!frame) frame = requestAnimationFrame(() => { frame = 0; updateRowEdges(); }); };
+  row.addEventListener('scroll', schedule, { passive: true });
+  rowObserver?.disconnect();
+  rowObserver = new ResizeObserver(schedule);
+  rowObserver.observe(row);
+  rowObserver.observe(row.querySelector('.kanban-board'));
+  updateRowEdges();
 }
 
 // ── Remote changes (E3/E4) ────────────────────────────────────────────────────
@@ -366,6 +436,12 @@ async function patchBoard(groupId, changes) {
 
     const count = col.querySelector('.column-count');
     if (count) count.textContent = String(list.length);
+  });
+
+  // Column tab counts (narrow layout)
+  document.querySelectorAll('.column-tab').forEach((tab) => {
+    const count = tab.querySelector('.column-count');
+    if (count) count.textContent = String(data.tasks.filter((t) => t.status === tab.dataset.status).length);
   });
 
   // Cards that no longer exist (deleted remotely)
