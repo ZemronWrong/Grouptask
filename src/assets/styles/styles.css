@@ -1498,10 +1498,6 @@ textarea { resize: vertical; }
   .profile-hero { flex-direction: column; text-align: center; }
   .profile-stats-grid { grid-template-columns: repeat(2, 1fr); }
 
-  /* Podium: stack cards on small screens */
-  .podium { flex-direction: column; align-items: center; gap: 12px; }
-  .podium-card { width: 100%; max-width: 320px; }
-
   /* Dashboard sidebar becomes top bar */
   .dash-sidebar { width: 100%; min-height: auto; position: relative; }
 }
@@ -4472,6 +4468,35 @@ textarea { resize: vertical; }
 .chart-box { position: relative; width: 100%; min-width: 0; height: clamp(220px, 38vh, 320px); }
 
 .member-count-label { white-space: nowrap; }
+
+/* ── H6: other screens at half width ── */
+/* Leaderboard: the podium stacks (1st, 2nd, 3rd) only when three cards can't sit side by side */
+@container main (width < 560px) {
+  .podium { flex-direction: column; align-items: center; gap: 12px; padding: 8px 0; }
+  .podium-card { width: 100%; max-width: 320px; }
+  .podium-1 { order: 1; }
+  .podium-2 { order: 2; }
+  .podium-3 { order: 3; }
+  .leaderboard-container { padding: 16px; }
+  /* The table becomes stacked rows: rank, name and points, then badges underneath */
+  .leaderboard-table .lb-header { display: none; }
+  .leaderboard-table .lb-row { grid-template-columns: 40px minmax(0, 1fr) auto; gap: 4px 10px; padding: 12px 14px; }
+  .leaderboard-table .lb-row > :nth-child(4) { grid-column: 2 / -1; }
+  .leaderboard-table .lb-member-link { max-width: 100%; }
+}
+/* Team: cards never wider than the page */
+.members-grid { grid-template-columns: repeat(auto-fill, minmax(min(320px, 100%), 1fr)); }
+@container main (width < 560px) {
+  .members-grid { padding: 0; gap: 14px; }
+}
+/* Activity: filter tabs wrap instead of running off the side */
+.activity-filter-tabs { flex-wrap: wrap; }
+.activity-filter-tab { white-space: nowrap; }
+/* Notifications dropdown fits narrow windows */
+.notif-dropdown { width: min(360px, calc(100vw - 24px)); max-height: min(480px, calc(100dvh - 80px)); }
+@media (max-width: 480px) {
+  .notif-dropdown { right: 12px; }
+}
 /* On narrow windows "Connected · All changes saved" shrinks to its dot (other states keep their words) */
 @media (max-width: 700px) {
   #connection-status.cs-connected { padding: 7px; }

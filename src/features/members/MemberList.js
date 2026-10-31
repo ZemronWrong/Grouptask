@@ -53,7 +53,7 @@ export async function renderMembers(groupId) {
           </div>
         </header>
 
-        <div style="padding: 24px;">
+        <div style="padding: clamp(12px, 4cqi, 24px);">
           <div style="margin-bottom:24px; padding:16px; background:var(--bg-card); border-radius:12px; border:1px solid var(--border);">
             <h2 style="font-size:1.1rem; margin-bottom:8px;">Team Analysis</h2>
             <p style="color:var(--text-secondary); font-size:0.9rem;">
