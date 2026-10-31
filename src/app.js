@@ -11,6 +11,7 @@ import { captureScroll, restoreScroll } from './utils/helpers.js';
 import { screenSkeletonHTML } from './utils/skeletons.js';
 import { showToast, initModalKeyboard } from './utils/ui.js';
 import { syncRejectedMessage } from './utils/errors.js';
+import { initNavLayout } from './utils/navLayout.js';
 
 const GUEST_PATHS = ['/welcome', '/login', '/register'];
 
@@ -100,6 +101,7 @@ export async function boot() {
   await openDB();
   initConnectionStatus();
   initModalKeyboard();
+  initNavLayout();
 
   addRoute('/welcome', guestOnly(renderWelcome));
   addRoute('/login', guestOnly(renderLogin));

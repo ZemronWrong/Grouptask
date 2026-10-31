@@ -171,54 +171,60 @@ function bindMemberEvents(groupId, membersList) {
 // ----------------------------------------------------------------------
 // Reusable Sidebar Component
 // ----------------------------------------------------------------------
+// H2: one link per page; the label is hidden in the icon rail and shown as a tooltip
+function sidebarLinkHTML(href, icon, label, active) {
+  return `
+        <a href="${href}" class="sidebar-link ${active ? 'active' : ''}" aria-label="${label}" data-tip="${label}"${active ? ' aria-current="page"' : ''}>
+          <span class="sidebar-icon">${icon}</span><span class="sidebar-label">${label}</span>
+        </a>`;
+}
+
 export function sidebarHTML(groupId, currentPath, members, tasks) {
   const user = currentUser();
   const me = members?.find(m => m.uid === user?.uid);
   const myRole = me?.role || 'member';
+  const name = me?.displayName || 'Unknown';
+  const roleName = getRoleName(myRole);
+  const groupLeave = myRole === 'owner'
+    ? { id: 'btn-sidebar-delete-group', icon: ICONS.trash, label: 'Delete Board' }
+    : { id: 'btn-sidebar-leave-group', icon: ICONS.door, label: 'Leave Group' };
 
   return `
-    <nav class="sidebar">
+    <header class="app-topbar">
+      <button type="button" class="btn-icon nav-menu-btn" aria-label="Open menu" aria-controls="app-sidebar" aria-expanded="false">☰</button>
+      <a href="#/dashboard" class="app-topbar-logo"><span class="sidebar-icon">${ICONS.clipboard}</span> GroupTask</a>
+      <span class="app-topbar-role" title="${escapeHtml(getTerm('myRole'))}: ${escapeHtml(roleName)}">${escapeHtml(roleName)}</span>
+    </header>
+    <div class="nav-backdrop" aria-hidden="true"></div>
+    <nav class="sidebar" id="app-sidebar" aria-label="Group pages">
       <div class="sidebar-logo">
-        <a href="#/dashboard" style="display:flex; align-items:center; gap:8px; text-decoration:none; color:inherit;">
-          <span style="font-size: 1.5rem;">${ICONS.clipboard}</span> 
-          <span>GroupTask</span>
+        <a href="#/dashboard" class="sidebar-logo-link" aria-label="GroupTask dashboard">
+          <span class="sidebar-icon">${ICONS.clipboard}</span>
+          <span class="sidebar-label">GroupTask</span>
         </a>
+        <button type="button" class="btn-icon sidebar-collapse-btn" aria-label="Collapse sidebar" data-tip="Collapse sidebar">
+          <span aria-hidden="true">«</span>
+        </button>
       </div>
       <div class="sidebar-nav">
-        <a href="#/dashboard" class="sidebar-link">
-          <span>${ICONS.home}</span> Dashboard
-        </a>
-        <a href="#/group/${groupId}" class="sidebar-link ${currentPath === 'board' ? 'active' : ''}">
-          <span>${ICONS.clipboard}</span> Board
-        </a>
-        <a href="#/group/${groupId}/leaderboard" class="sidebar-link ${currentPath === 'leaderboard' ? 'active' : ''}">
-          <span>${ICONS.trophy}</span> Leaderboard
-        </a>
-        <a href="#/group/${groupId}/evaluate" class="sidebar-link ${currentPath === 'evaluate' ? 'active' : ''}">
-          <span>${ICONS.star}</span> Peer evaluation
-        </a>
-        <a href="#/group/${groupId}/members" class="sidebar-link ${currentPath === 'members' ? 'active' : ''}">
-          <span>${ICONS.users}</span> Team
-        </a>
-        <a href="#/group/${groupId}/audit" class="sidebar-link ${currentPath === 'audit' ? 'active' : ''}">
-          <span>${ICONS.clipboard}</span> Activity
-        </a>
+        ${sidebarLinkHTML('#/dashboard', ICONS.home, 'Dashboard', false)}
+        ${sidebarLinkHTML(`#/group/${groupId}`, ICONS.clipboard, 'Board', currentPath === 'board')}
+        ${sidebarLinkHTML(`#/group/${groupId}/leaderboard`, ICONS.trophy, 'Leaderboard', currentPath === 'leaderboard')}
+        ${sidebarLinkHTML(`#/group/${groupId}/evaluate`, ICONS.star, 'Peer evaluation', currentPath === 'evaluate')}
+        ${sidebarLinkHTML(`#/group/${groupId}/members`, ICONS.users, 'Team', currentPath === 'members')}
+        ${sidebarLinkHTML(`#/group/${groupId}/audit`, ICONS.activity, 'Activity', currentPath === 'audit')}
       </div>
-      
-      <div style="margin-top: auto; padding: 16px;">
-        <div style="font-size:0.75rem; color:var(--text-muted); margin-bottom:8px; font-family:var(--font-heading); text-transform:uppercase;">${getTerm('myRole')}</div>
-        <div style="display:flex; align-items:center; gap:8px; margin-bottom: 12px;">
+
+      <div class="sidebar-footer">
+        <div class="sidebar-role-label">${getTerm('myRole')}</div>
+        <div class="sidebar-me" data-tip="${escapeHtml(name)} · ${escapeHtml(roleName)}">
           <div class="avatar" style="width:28px;height:28px;font-size:0.8rem;">${escapeHtml(me?.displayName?.[0] || '?')}</div>
-          <div>
-            <div style="font-weight:600; font-size:0.85rem; color:var(--text);">${escapeHtml(me?.displayName || 'Unknown')}</div>
-            <div style="font-size:0.75rem; color:var(--primary); font-family:var(--font-heading);">${getRoleName(myRole)}</div>
+          <div class="sidebar-label">
+            <div style="font-weight:600; font-size:0.85rem; color:var(--text);">${escapeHtml(name)}</div>
+            <div style="font-size:0.75rem; color:var(--primary); font-family:var(--font-heading);">${roleName}</div>
           </div>
         </div>
-        ${myRole === 'owner' ? `
-          <button class="btn btn-danger btn-block btn-sm" id="btn-sidebar-delete-group" data-group-id="${groupId}" style="margin-top: 12px;">${ICONS.trash} Delete Board</button>
-        ` : `
-          <button class="btn btn-danger btn-block btn-sm" id="btn-sidebar-leave-group" data-group-id="${groupId}" style="margin-top: 12px;">${ICONS.door} Leave Group</button>
-        `}
+        <button class="btn btn-danger btn-block btn-sm" id="${groupLeave.id}" data-group-id="${groupId}" aria-label="${groupLeave.label}" data-tip="${groupLeave.label}">${groupLeave.icon} <span class="sidebar-label">${groupLeave.label}</span></button>
       </div>
     </nav>
   `;
