@@ -11,8 +11,40 @@ import { notify } from '../../services/notificationService.js';
 import { ICONS } from '../../assets/icons/icons.js';
 import { logActivity } from '../../services/activityLogService.js';
 import { getAllBadges, awardEligibleBadgesForUser } from '../../core/badgeEngine.js';
+import { confirmDialog, showToast } from '../../utils/ui.js';
 
 const ALL_BADGE_DEFS = getAllBadges();
+
+// F4: comments appear as soon as they're posted, faint until the server has them.
+const sendingCommentIds = new Set();
+// What renderCommentsUI loaded per task, so a new comment can be drawn without waiting
+const commentContexts = new Map();
+
+function sendingLabel() {
+  return navigator.onLine ? 'Sending…' : 'Will send when online';
+}
+
+function setCommentState(id, state) {
+  const item = document.querySelector(`.comment-item[data-comment-id="${id}"]`);
+  if (!item) return;
+  item.classList.toggle('comment-sending', state === 'sending');
+  item.classList.toggle('comment-failed', state === 'failed');
+  const status = item.querySelector('.comment-status');
+  if (status) status.textContent = state === 'sending' ? sendingLabel() : state === 'failed' ? 'Not sent' : '';
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('sync-flushed', (e) => {
+    const { collection, docId } = e.detail || {};
+    if (collection !== 'comments' || !sendingCommentIds.delete(docId)) return;
+    setCommentState(docId, 'sent');
+  });
+  window.addEventListener('sync-rejected', (e) => {
+    const { collection, docId } = e.detail || {};
+    if (collection !== 'comments' || !sendingCommentIds.delete(docId)) return;
+    setCommentState(docId, 'failed');  // app.js shows the message
+  });
+}
 
 /** Returns the top badge definition for a member by looking up their stored badges. */
 async function getMemberTopBadge(memberUid, memberIdList) {
@@ -75,7 +107,7 @@ async function buildMemberPopup(member, groupId) {
   return `
     <div class="member-popup-overlay" id="member-popup-overlay">
       <div class="member-popup" style="width:360px; max-width:92vw;">
-        <button class="btn-icon member-popup-close" id="member-popup-close" style="position:absolute;top:12px;right:12px;" title="Close">✕</button>
+        <button class="btn-icon member-popup-close" id="member-popup-close" style="position:absolute;top:12px;right:12px;" title="Close" aria-label="Close">✕</button>
         <div style="display:flex; gap:14px; align-items:center; margin-bottom:16px;">
           <div class="avatar" style="width:52px;height:52px;font-size:1.3rem;flex-shrink:0;overflow:hidden;border:2px solid var(--border);">${avatarHTML}</div>
           <div style="min-width:0; flex:1;">
@@ -141,6 +173,58 @@ async function buildMemberPopup(member, groupId) {
   `;
 }
 
+function commentHTML(c, { members, me, allBadges, profileMap, groupId }) {
+  const author = members.find(m => m.id === c.memberId) || { displayName: 'Unknown', uid: '' };
+  const isMine = c.memberId === me?.id;
+
+  // Get top badge for this author
+  const authorMemberIds = members.filter(m => (author.uid && m.uid === author.uid) || m.id === author.id).map(m => m.id);
+  if (!authorMemberIds.includes(author.id)) authorMemberIds.push(author.id);
+  const authorBadgeTypes = new Set(
+    allBadges
+      .filter(b => authorMemberIds.includes(b.memberId) || (author.uid && b.uid === author.uid))
+      .map(b => b.type || b.id)
+  );
+  const topBadge = ALL_BADGE_DEFS.find(b => authorBadgeTypes.has(b.id));
+
+  // Profile picture
+  const prof = author.uid ? profileMap[author.uid] : null;
+  const hasPhoto = prof?.avatarType === 'custom' && prof?.avatar;
+  const avatarHTML = hasPhoto
+    ? `<img src="${prof.avatar}" alt="${escapeHtml(author.displayName?.[0] || '?')}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`
+    : escapeHtml(author.displayName?.[0] || '?');
+
+  return `
+    <div class="comment-item${sendingCommentIds.has(c.id) ? ' comment-sending' : ''}" data-comment-id="${c.id}">
+      <div class="avatar avatar-sm comment-author-avatar" data-member-id="${c.memberId}" data-group-id="${groupId}" style="cursor:pointer; overflow:hidden; flex-shrink:0;" title="Click to view ${escapeHtml(author.displayName)}'s badges">${avatarHTML}</div>
+      <div class="comment-content">
+        <div class="comment-header" style="display:flex; align-items:center; flex-wrap:wrap; gap:6px;">
+          <span class="comment-author comment-author-link" data-member-id="${c.memberId}" data-group-id="${groupId}" style="cursor:pointer;" title="Click to view badges">${escapeHtml(author.displayName)}</span>
+          ${topBadge ? `
+            <span class="comment-badge-inline" data-member-id="${c.memberId}" data-group-id="${groupId}" title="${escapeHtml(topBadge.label)} — Click to view badges" style="display:inline-flex;align-items:center;gap:3px; background:var(--primary-soft); border:1px solid var(--border); border-radius:12px; padding:2px 8px; font-size:0.7rem; color:var(--primary); cursor:pointer;">
+              <span>${topBadge.icon}</span> <span style="font-family:var(--font-heading); font-weight:600;">${escapeHtml(topBadge.label)}</span>
+            </span>
+          ` : `
+            <span class="comment-badge-inline" data-member-id="${c.memberId}" data-group-id="${groupId}" title="View badges" style="display:inline-flex;align-items:center;gap:2px; background:var(--bg); border:1px solid var(--border); border-radius:12px; padding:2px 6px; font-size:0.7rem; color:var(--text-muted); cursor:pointer;">
+              <span>🏅</span>
+            </span>
+          `}
+          <span class="comment-time">${new Date(c.createdAt).toLocaleString()}</span>
+          <span class="comment-status" aria-live="polite">${sendingCommentIds.has(c.id) ? sendingLabel() : ''}</span>
+        </div>
+        <div class="comment-text ${c.deleted ? 'comment-deleted' : ''}">
+          ${c.deleted ? '<i>This comment was deleted.</i>' : escapeHtml(c.text)}
+        </div>
+        ${!c.deleted && isMine ? `
+          <div class="comment-actions">
+            <button type="button" class="btn-link btn-delete-comment" data-id="${c.id}">Delete</button>
+          </div>
+        ` : ''}
+      </div>
+    </div>
+  `;
+}
+
 export async function renderCommentsUI(taskId, groupId, members) {
   const allComments = await getAllByIndex(STORES.COMMENTS, 'taskId', taskId);
   const sortedComments = allComments.sort((a, b) => a.createdAt - b.createdAt);
@@ -154,74 +238,27 @@ export async function renderCommentsUI(taskId, groupId, members) {
   const profileMap = {};
   allProfiles.forEach(p => { profileMap[p.uid] = p; });
 
-  const buildCommentHTML = (c) => {
-    const author = members.find(m => m.id === c.memberId) || { displayName: 'Unknown', uid: '' };
-    const isMine = c.memberId === me?.id;
-
-    // Get top badge for this author
-    const authorMemberIds = members.filter(m => (author.uid && m.uid === author.uid) || m.id === author.id).map(m => m.id);
-    if (!authorMemberIds.includes(author.id)) authorMemberIds.push(author.id);
-    const authorBadgeTypes = new Set(
-      allBadges
-        .filter(b => authorMemberIds.includes(b.memberId) || (author.uid && b.uid === author.uid))
-        .map(b => b.type || b.id)
-    );
-    const topBadge = ALL_BADGE_DEFS.find(b => authorBadgeTypes.has(b.id));
-
-    // Profile picture
-    const prof = author.uid ? profileMap[author.uid] : null;
-    const hasPhoto = prof?.avatarType === 'custom' && prof?.avatar;
-    const avatarHTML = hasPhoto
-      ? `<img src="${prof.avatar}" alt="${escapeHtml(author.displayName?.[0] || '?')}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`
-      : escapeHtml(author.displayName?.[0] || '?');
-
-    return `
-      <div class="comment-item" data-comment-id="${c.id}">
-        <div class="avatar avatar-sm comment-author-avatar" data-member-id="${c.memberId}" data-group-id="${groupId}" style="cursor:pointer; overflow:hidden; flex-shrink:0;" title="Click to view ${escapeHtml(author.displayName)}'s badges">${avatarHTML}</div>
-        <div class="comment-content">
-          <div class="comment-header" style="display:flex; align-items:center; flex-wrap:wrap; gap:6px;">
-            <span class="comment-author comment-author-link" data-member-id="${c.memberId}" data-group-id="${groupId}" style="cursor:pointer;" title="Click to view badges">${escapeHtml(author.displayName)}</span>
-            ${topBadge ? `
-              <span class="comment-badge-inline" data-member-id="${c.memberId}" data-group-id="${groupId}" title="${escapeHtml(topBadge.label)} — Click to view badges" style="display:inline-flex;align-items:center;gap:3px; background:var(--primary-soft); border:1px solid var(--border); border-radius:12px; padding:2px 8px; font-size:0.7rem; color:var(--primary); cursor:pointer;">
-                <span>${topBadge.icon}</span> <span style="font-family:var(--font-heading); font-weight:600;">${escapeHtml(topBadge.label)}</span>
-              </span>
-            ` : `
-              <span class="comment-badge-inline" data-member-id="${c.memberId}" data-group-id="${groupId}" title="View badges" style="display:inline-flex;align-items:center;gap:2px; background:var(--bg); border:1px solid var(--border); border-radius:12px; padding:2px 6px; font-size:0.7rem; color:var(--text-muted); cursor:pointer;">
-                <span>🏅</span>
-              </span>
-            `}
-            <span class="comment-time">${new Date(c.createdAt).toLocaleString()}</span>
-          </div>
-          <div class="comment-text ${c.deleted ? 'comment-deleted' : ''}">
-            ${c.deleted ? '<i>This comment was deleted.</i>' : escapeHtml(c.text)}
-          </div>
-          ${!c.deleted && isMine ? `
-            <div class="comment-actions">
-              <button class="btn-link btn-delete-comment" data-id="${c.id}">Delete</button>
-            </div>
-          ` : ''}
-        </div>
-      </div>
-    `;
-  };
+  const ctx = { members, me, allBadges, profileMap, groupId };
+  commentContexts.set(taskId, ctx);
+  const buildCommentHTML = (c) => commentHTML(c, ctx);
 
   return `
     <div class="comments-section">
-      <h3 style="margin-bottom:12px; font-size:1rem;">${ICONS.message} Comments (${sortedComments.filter(c => !c.deleted).length})</h3>
+      <h3 style="margin-bottom:12px; font-size:1rem;">${ICONS.message} Comments (<span class="comments-count">${sortedComments.filter(c => !c.deleted).length}</span>)</h3>
       <div class="comments-list" id="comments-list-${taskId}">
         ${sortedComments.map(buildCommentHTML).join('')}
         ${sortedComments.length === 0 ? '<p class="empty-state" style="padding:8px 0; font-size:0.85rem;">No comments yet.</p>' : ''}
       </div>
       
       <form class="comment-form" id="comment-form-${taskId}">
-        <input type="text" id="comment-input-${taskId}" placeholder="Add a comment... (Type @ to mention)" required />
+        <input type="text" id="comment-input-${taskId}" placeholder="Add a comment... (Type @ to mention)" aria-label="Add a comment" required />
         <button type="submit" class="btn btn-primary btn-sm">Send</button>
       </form>
     </div>
   `;
 }
 
-export function bindCommentEvents(taskId, groupId, members, onCommentAdded) {
+export function bindCommentEvents(taskId, groupId, members, onCommentsChanged) {
   const form = document.getElementById(`comment-form-${taskId}`);
   const input = document.getElementById(`comment-input-${taskId}`);
   const list = document.getElementById(`comments-list-${taskId}`);
@@ -246,8 +283,29 @@ export function bindCommentEvents(taskId, groupId, members, onCommentAdded) {
       deleted: false
     };
 
-    await add(STORES.COMMENTS, comment);
-    await addToSyncQueue({ collection: 'comments', docId: comment.id, operation: 'add', data: comment });
+    // F4: show it straight away (faint until uploaded), then save
+    sendingCommentIds.add(comment.id);
+    const ctx = commentContexts.get(taskId) || { members, me, allBadges: [], profileMap: {}, groupId };
+    list.querySelector('.empty-state')?.remove();
+    list.insertAdjacentHTML('beforeend', commentHTML(comment, ctx));
+    list.lastElementChild?.scrollIntoView({ block: 'nearest' });
+    const count = form.closest('.comments-section')?.querySelector('.comments-count');
+    if (count) count.textContent = String(Number(count.textContent) + 1);
+    input.value = '';
+
+    try {
+      await add(STORES.COMMENTS, comment);
+      await addToSyncQueue({ collection: 'comments', docId: comment.id, operation: 'add', data: comment });
+    } catch (err) {
+      console.error('[Comments] Could not save comment:', err);
+      sendingCommentIds.delete(comment.id);
+      list.querySelector(`.comment-item[data-comment-id="${comment.id}"]`)?.remove();
+      if (count) count.textContent = String(Math.max(0, Number(count.textContent) - 1));
+      if (!input.value) input.value = text;
+      showToast('Could not save your comment. Please try again.', { type: 'error' });
+      return;
+    }
+
     // Comment badges are earned here (viewing a popup or profile no longer awards them)
     await awardEligibleBadgesForUser(me.uid);
 
@@ -262,8 +320,6 @@ export function bindCommentEvents(taskId, groupId, members, onCommentAdded) {
       meta: { taskId, commentId: comment.id },
     });
 
-    input.value = '';
-    
     // Check for mentions and notify
     const mentionRegex = /@(\w+)/g;
     let match;
@@ -279,24 +335,26 @@ export function bindCommentEvents(taskId, groupId, members, onCommentAdded) {
         });
       }
     }
-
-    if (onCommentAdded) await onCommentAdded();
   });
 
-  // Delete comments
-  list.querySelectorAll('.btn-delete-comment').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      if (confirm('Delete this comment?')) {
-        const id = btn.dataset.id;
-        const comment = await get(STORES.COMMENTS, id);
-        if (comment) {
-          comment.deleted = true;
-          await put(STORES.COMMENTS, comment);
-          await addToSyncQueue({ collection: 'comments', docId: id, operation: 'update', data: comment });
-          if (onCommentAdded) await onCommentAdded();
-        }
-      }
+  // Delete comments (delegated, so comments added above get it too)
+  list.addEventListener('click', async (e) => {
+    const btn = e.target.closest('.btn-delete-comment');
+    if (!btn) return;
+    const ok = await confirmDialog({
+      title: 'Delete this comment?',
+      message: 'Your comment will be replaced with "This comment was deleted." for everyone.',
+      confirmLabel: 'Delete comment',
     });
+    if (!ok) return;
+    const id = btn.dataset.id;
+    const comment = await get(STORES.COMMENTS, id);
+    if (comment) {
+      comment.deleted = true;
+      await put(STORES.COMMENTS, comment);
+      await addToSyncQueue({ collection: 'comments', docId: id, operation: 'update', data: comment });
+      if (onCommentsChanged) await onCommentsChanged();
+    }
   });
 
   // Member popup on avatar/name/badge click
@@ -310,13 +368,11 @@ export function bindCommentEvents(taskId, groupId, members, onCommentAdded) {
     await openMemberPopup(member, gId);
   };
 
-  list.querySelectorAll('.comment-author-link, .comment-author-avatar, .comment-badge-inline').forEach(el => {
-    el.addEventListener('click', async (e) => {
-      e.stopPropagation();
-      const memberId = el.dataset.memberId;
-      const gId = el.dataset.groupId;
-      await handleMemberClick(memberId, gId);
-    });
+  list.addEventListener('click', async (e) => {
+    const el = e.target.closest('.comment-author-link, .comment-author-avatar, .comment-badge-inline');
+    if (!el) return;
+    e.stopPropagation();
+    await handleMemberClick(el.dataset.memberId, el.dataset.groupId);
   });
 }
 

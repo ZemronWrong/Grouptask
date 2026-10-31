@@ -106,7 +106,7 @@ export async function renderProfile(paramsOrUid) {
   app.innerHTML = `
     <header class="board-header">
       <div class="board-header-left">
-        <button class="btn-icon" id="btn-profile-back" title="Back">${ICONS.back}</button>
+        <button class="btn-icon" id="btn-profile-back" title="Back" aria-label="Back">${ICONS.back}</button>
         <h1 class="board-title">${isOwnProfile ? 'My Profile' : `${escapeHtml(profile.displayName)}'s Profile`}</h1>
       </div>
       ${isOwnProfile ? `

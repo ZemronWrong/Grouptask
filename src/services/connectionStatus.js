@@ -12,10 +12,12 @@
 import { getSyncQueue } from './indexedDBService.js';
 import { isMock } from '../config/firebaseConfig.js';
 
-const POLL_MS = 3000; // how often we check the sync queue
+// F4: the sync engine announces queue changes with events (E4), so polling is
+// only a slow safety net in case one is missed.
+export const SAFETY_POLL_MS = 30000;
 
 let _el = null;
-let _pollTimer = null;
+let _listening = false;
 
 // ── State machine ─────────────────────────────────────────────────────────────
 // States (in priority order, highest wins):
@@ -118,7 +120,8 @@ export function initConnectionStatus() {
   _render();
 
   // Guard: only register listeners once
-  if (_pollTimer !== null) return;
+  if (_listening) return;
+  _listening = true;
 
   window.addEventListener('online',  _onOnline);
   window.addEventListener('offline', _onOffline);
@@ -129,10 +132,8 @@ export function initConnectionStatus() {
   }
   _pollQueue();
 
-  // Periodically check the sync queue even when online,
-  // so the pill flips to "Syncing" when writes are queued locally.
   if (!isMock) {
-    _pollTimer = setInterval(_pollQueue, POLL_MS);
+    setInterval(_pollQueue, SAFETY_POLL_MS);
   }
 }
 

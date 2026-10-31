@@ -117,7 +117,7 @@ export async function renderAudit(groupId) {
         <div class="main-content">
           <header class="board-header">
             <div class="board-header-left">
-              <button class="btn-icon" id="btn-back" title="Back to Board">${ICONS.back}</button>
+              <button class="btn-icon" id="btn-back" title="Back to Board" aria-label="Back to Board">${ICONS.back}</button>
               <h1 class="board-title">${ICONS.clipboard} Activity History</h1>
             </div>
             <div class="board-header-right">

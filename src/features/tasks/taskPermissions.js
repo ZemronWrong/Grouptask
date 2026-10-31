@@ -71,6 +71,20 @@ export function canDragTask(task, me) {
 }
 
 /**
+ * F4: why a card move can't be undone. `applied` is what the move set
+ * ({ status, assignedTo }). Undo only puts the card back if nobody changed it
+ * since; a Completed card is never reopened.
+ */
+export function undoMoveBlockReason(task, applied) {
+  if (!task) return 'This task no longer exists, so the move can\'t be undone.';
+  if (task.status === 'done') return 'Completed tasks are locked, so the move can\'t be undone.';
+  if (task.status !== applied?.status || (task.assignedTo ?? null) !== (applied?.assignedTo ?? null)) {
+    return 'This task changed since you moved it, so the move can\'t be undone.';
+  }
+  return null;
+}
+
+/**
  * What an allowed drop does (call dropBlockReason first):
  *   'review' — into Completed: open REVIEW APPROVAL, so approval goes through handleReview.
  *   'submit' — into Pending Approval by a member, or by an admin with their own

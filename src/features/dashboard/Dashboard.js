@@ -17,28 +17,36 @@ import { getTerm } from '../../services/themeService.js';
 import { ICONS } from '../../assets/icons/icons.js';
 import { bellIconHTML, bindBellEvents } from './Notifications.js';
 import { getRecentActivity, buildDailyActivityCounts } from '../../services/activityLogService.js';
+import { showToast, confirmDialog, withBusy, isBusyButton } from '../../utils/ui.js';
+import { authErrorMessage } from '../../utils/errors.js';
 
 /* ── Modal helper ── */
-function showModal({ title, body, confirmLabel, onConfirm }) {
+// A form, so Enter in its field submits it (F4); the confirm button shows
+// "Saving…" and ignores double clicks while onConfirm runs.
+function showModal({ title, body, confirmLabel, busyLabel = 'Saving…', onConfirm }) {
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay';
   overlay.innerHTML = `
-    <div class="modal" role="dialog">
-      <div class="modal-header"><h2>${title}</h2></div>
+    <form class="modal" role="dialog" aria-modal="true" aria-label="${escapeHtml(title)}" novalidate>
+      <div class="modal-header"><h2>${escapeHtml(title)}</h2></div>
       <div class="modal-body">${body}</div>
       <div class="modal-footer">
         <button class="btn btn-secondary" type="button" data-close>Cancel</button>
-        <button class="btn btn-primary" type="button" data-confirm>${confirmLabel}</button>
+        <button class="btn btn-primary" type="submit" data-confirm>${confirmLabel}</button>
       </div>
-    </div>
+    </form>
   `;
   document.body.appendChild(overlay);
   overlay.querySelector('[data-close]').addEventListener('click', () => overlay.remove());
   overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
-  overlay.querySelector('[data-confirm]').addEventListener('click', async () => {
-    const keepOpen = await onConfirm(overlay);
+  overlay.querySelector('form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const confirmBtn = overlay.querySelector('[data-confirm]');
+    if (isBusyButton(confirmBtn)) return;
+    const keepOpen = await withBusy(confirmBtn, () => onConfirm(overlay), { label: busyLabel });
     if (!keepOpen) overlay.remove();
   });
+  return overlay;
 }
 
 /* ── Sparkline bars HTML ── */
@@ -255,9 +263,9 @@ export async function renderDashboard() {
       <!-- Global Actions -->
       <div class="dash-global-actions" style="position:absolute; top:24px; right:32px; display:flex; gap:8px; z-index:100; align-items:center;">
         ${bell}
-        <a class="btn-icon" href="#/profile" title="Profile">${ICONS.user}</a>
-        <a class="btn-icon" href="#/settings" title="Settings">${ICONS.settings}</a>
-        <button class="btn-icon" id="btn-logout" title="Sign out">${ICONS.logout}</button>
+        <a class="btn-icon" href="#/profile" title="Profile" aria-label="Profile">${ICONS.user}</a>
+        <a class="btn-icon" href="#/settings" title="Settings" aria-label="Settings">${ICONS.settings}</a>
+        <button class="btn-icon" id="btn-logout" title="Sign out" aria-label="Sign out">${ICONS.logout}</button>
       </div>
 
       <!-- Left sidebar: project list -->
@@ -306,11 +314,19 @@ export async function renderDashboard() {
         ${firstGroup ? '' : `
           <div class="dash-empty-state">
             <div class="dash-empty-icon">${ICONS.clipboard}</div>
-            <h2>No groups yet</h2>
-            <p>Create or join a group to see your project pulse here.</p>
-            <div style="display:flex;gap:12px;margin-top:24px;justify-content:center">
-              <button class="btn btn-primary" id="btn-create-group-empty">${ICONS.plus} ${getTerm('newGroup')}</button>
-              <button class="btn btn-secondary" id="btn-join-group-empty">${ICONS.link} ${getTerm('joinGroup')}</button>
+            <h2>Welcome! Let's get your group started</h2>
+            <p>You're not in a group yet. Pick one to begin:</p>
+            <div class="dash-empty-choices">
+              <button class="dash-empty-choice" type="button" id="btn-create-group-empty">
+                <span class="dash-empty-choice-icon">${ICONS.plus}</span>
+                <span class="dash-empty-choice-title">${escapeHtml(getTerm('newGroup'))}</span>
+                <span class="dash-empty-choice-text">You'll be the leader: you add tasks, set their weights and approve finished work.</span>
+              </button>
+              <button class="dash-empty-choice" type="button" id="btn-join-group-empty">
+                <span class="dash-empty-choice-icon">${ICONS.link}</span>
+                <span class="dash-empty-choice-title">Join with a code</span>
+                <span class="dash-empty-choice-text">Your leader shares an invite code. Enter it to join their group's board.</span>
+              </button>
             </div>
           </div>
         `}
@@ -367,20 +383,34 @@ async function loadPulse(group, allGroups) {
     navigate(`#/group/${group.id}`);
   });
 
-  document.getElementById('btn-dash-delete-group')?.addEventListener('click', async (e) => {
-    if (confirm('Are you sure you want to delete this board? This action cannot be undone.')) {
-      const gId = e.currentTarget.dataset.groupId;
+  const deleteBtn = document.getElementById('btn-dash-delete-group');
+  deleteBtn?.addEventListener('click', async () => {
+    const ok = await confirmDialog({
+      title: 'Delete this board?',
+      message: `"${group.name}" and all its tasks will be deleted for everyone in the group. This can't be undone.`,
+      confirmLabel: 'Delete board',
+    });
+    if (!ok) return;
+    await withBusy(deleteBtn, async () => {
+      const gId = deleteBtn.dataset.groupId;
       await remove(STORES.GROUPS, gId);
       await addToSyncQueue({ collection: 'groups', docId: gId, operation: 'delete' });
       await flushQueue();
       stopSync();
       navigate('#/dashboard');
       await renderDashboard(); // E3: re-render the list instead of reloading the page
-    }
+    }, { label: 'Deleting…' });
   });
 
-  document.getElementById('btn-dash-leave-group')?.addEventListener('click', async (e) => {
-    if (confirm('Are you sure you want to leave this group?')) {
+  const leaveBtn = document.getElementById('btn-dash-leave-group');
+  leaveBtn?.addEventListener('click', async () => {
+    const ok = await confirmDialog({
+      title: 'Leave this group?',
+      message: `You will lose access to "${group.name}". You can join again later with the invite code.`,
+      confirmLabel: 'Leave group',
+    });
+    if (!ok) return;
+    await withBusy(leaveBtn, async () => {
       const user = currentUser();
       const membersList = await getAllByIndex(STORES.MEMBERS, 'groupId', group.id);
       const me = membersList.find(m => m.uid === user.uid);
@@ -390,7 +420,7 @@ async function loadPulse(group, allGroups) {
       stopSync();
       navigate('#/dashboard');
       await renderDashboard(); // E3: re-render the list instead of reloading the page
-    }
+    }, { label: 'Leaving…' });
   });
 
   main.querySelectorAll('.pulse-nav-btn').forEach(btn => {
@@ -404,14 +434,22 @@ function bindCreateJoin(user, groups, app) {
       showModal({
         title: getTerm('newGroup'),
         confirmLabel: 'Create',
+        busyLabel: 'Creating…',
         body: `<div class="form-group"><label for="new-group-name">Name</label>
-          <input id="new-group-name" type="text" placeholder="${escapeHtml(getTerm('groupNamePlaceHolder'))}" /></div>`,
+          <input id="new-group-name" type="text" autocomplete="off" placeholder="${escapeHtml(getTerm('groupNamePlaceHolder'))}" /></div>
+          <p class="auth-error" id="create-error" role="alert"></p>`,
         onConfirm: async (overlay) => {
           const name = overlay.querySelector('#new-group-name').value.trim();
-          if (!name) return true;
-          const pf = await get(STORES.USER_PROFILES, user.uid);
-          const group = await createGroup({ name, createdBy: user.uid, displayName: pf?.displayName || user.displayName || user.email });
-          navigate(`#/group/${group.id}`);
+          const errorEl = overlay.querySelector('#create-error');
+          if (!name) { errorEl.textContent = 'Please give your group a name.'; return true; }
+          try {
+            const pf = await get(STORES.USER_PROFILES, user.uid);
+            const group = await createGroup({ name, createdBy: user.uid, displayName: pf?.displayName || user.displayName || user.email });
+            navigate(`#/group/${group.id}`);
+          } catch (err) {
+            errorEl.textContent = authErrorMessage(err, 'Could not create the group. Please try again.');
+            return true;
+          }
         },
       });
     });
@@ -419,11 +457,12 @@ function bindCreateJoin(user, groups, app) {
 
   const bindJoin = (id) => {
     app.querySelector(`#${id}`)?.addEventListener('click', () => {
-      showModal({
+      const overlay = showModal({
         title: getTerm('joinGroup'),
         confirmLabel: 'Join Directly',
+        busyLabel: 'Joining…',
         body: `<div class="form-group"><label for="join-code">Invite code</label>
-          <input id="join-code" type="text" placeholder="ABC12345" />
+          <input id="join-code" type="text" autocomplete="off" placeholder="ABC12345" />
           </div>
           <div style="display:flex; gap:8px; margin-top:12px;">
             <button class="btn btn-secondary btn-sm" type="button" id="btn-request-join" style="flex:1; font-weight:600;">📬 Request to Join</button>
@@ -432,29 +471,30 @@ function bindCreateJoin(user, groups, app) {
             <strong>Join Directly</strong> — adds you immediately using the invite code.<br>
             <strong>Request to Join</strong> — sends a request to the board owner for approval.
           </p>
-          <p class="auth-error" id="join-error"></p>`,
+          <p class="auth-error" id="join-error" role="alert"></p>`,
         onConfirm: async (overlay) => {
           const code = overlay.querySelector('#join-code').value.trim();
           const errorEl = overlay.querySelector('#join-error');
+          if (isBusyButton(overlay.querySelector('#btn-request-join'))) return true;
           if (!code) { errorEl.textContent = 'Please enter an invite code.'; return true; }
           try {
             const pf = await get(STORES.USER_PROFILES, user.uid);
             const group = await joinGroupByCode({ inviteCode: code, uid: user.uid, displayName: pf?.displayName || user.displayName || user.email });
             navigate(`#/group/${group.id}`);
           } catch (err) {
-            errorEl.textContent = err.message || 'Could not join.';
+            errorEl.textContent = authErrorMessage(err, 'Could not join. Check the code and try again.');
             return true;
           }
         },
       });
 
-      // Bind "Request to Join" button after modal renders
-      setTimeout(() => {
-        document.getElementById('btn-request-join')?.addEventListener('click', async () => {
-          const overlay = document.querySelector('.modal-overlay');
-          const code = overlay?.querySelector('#join-code')?.value.trim();
-          const errorEl = overlay?.querySelector('#join-error');
-          if (!code) { if (errorEl) errorEl.textContent = 'Please enter an invite code.'; return; }
+      const requestBtn = overlay.querySelector('#btn-request-join');
+      requestBtn.addEventListener('click', async () => {
+        const code = overlay.querySelector('#join-code').value.trim();
+        const errorEl = overlay.querySelector('#join-error');
+        if (!code) { errorEl.textContent = 'Please enter an invite code.'; return; }
+        if (isBusyButton(overlay.querySelector('[data-confirm]'))) return;
+        await withBusy(requestBtn, async () => {
           try {
             const pf = await get(STORES.USER_PROFILES, user.uid);
             await sendJoinRequest({
@@ -463,18 +503,13 @@ function bindCreateJoin(user, groups, app) {
               displayName: pf?.displayName || user.displayName || user.email,
               email: pf?.email || user.email || null,
             });
-            overlay?.remove();
-            // Show success toast
-            const t = document.createElement('div');
-            t.className = 'toast';
-            t.textContent = '📬 Join request sent! The board owner will review it.';
-            document.body.appendChild(t);
-            setTimeout(() => t.remove(), 3500);
+            overlay.remove();
+            showToast('📬 Join request sent! The board owner will review it.', { type: 'success' });
           } catch (err) {
-            if (errorEl) errorEl.textContent = err.message || 'Could not send request.';
+            errorEl.textContent = authErrorMessage(err, 'Could not send the request. Please try again.');
           }
-        });
-      }, 50);
+        }, { label: 'Sending…' });
+      });
     });
   };
 

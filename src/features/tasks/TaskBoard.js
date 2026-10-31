@@ -28,7 +28,8 @@ import {
   proofReviewModalHTML,
   proofSubmitModalHTML,
 } from './TaskModal.js';
-import { bindBoardEvents, moveTask, openProofSubmitModal, openProofReviewModal } from './boardEvents.js';
+import { bindBoardEvents, moveTask, undoMove, openProofSubmitModal, openProofReviewModal } from './boardEvents.js';
+import { showToast } from '../../utils/ui.js';
 import { dropBlockReason } from './taskPermissions.js';
 import { maybeStartBoardTour, startBoardTour } from './boardTour.js';
 
@@ -246,10 +247,27 @@ export async function renderTaskBoard(groupId) {
   // as the SUBMIT / REVIEW APPROVAL buttons instead of moving the card.
   if (me && me.role !== 'viewer' && !dragDropInitialised) {
     initDragDrop(async (taskId, newStatus) => {
-      const next = await moveTask(taskId, newStatus, _boardContext.groupId, _boardContext.members);
-      await renderTaskBoard(_boardContext.groupId);
-      if (next === 'submit') openProofSubmitModal(taskId);
-      if (next === 'review') openProofReviewModal(taskId, _boardContext.proofs);
+      const groupId = _boardContext.groupId;
+      const result = await moveTask(taskId, newStatus, groupId, _boardContext.members);
+      await renderTaskBoard(groupId);
+      if (result.action === 'submit') openProofSubmitModal(taskId);
+      if (result.action === 'review') openProofReviewModal(taskId, _boardContext.proofs);
+      // F4: a few seconds to take a drag back (never offered into Completed,
+      // which only happens through the review modal)
+      if (result.action === 'moved') {
+        const label = getStatuses().find((s) => s.key === newStatus)?.label || newStatus;
+        showToast(`Moved to ${label}`, {
+          type: 'success',
+          action: {
+            label: 'Undo',
+            onClick: async () => {
+              if (await undoMove(taskId, result, groupId, _boardContext.members) && currentGroupId === groupId) {
+                await renderTaskBoard(groupId);
+              }
+            },
+          },
+        });
+      }
     }, (taskId, status) => {
       const task = _boardContext.tasks?.find((t) => t.id === taskId);
       return dropBlockReason(task, _boardContext.me, status);
@@ -271,7 +289,7 @@ let retryTimer = null;
 
 function isBusy() {
   return !!document.querySelector(
-    '.modal-overlay:not([hidden]), #task-detail-modal, #member-popup-overlay, .task-card.dragging, .tour-overlay'
+    '.modal-overlay:not([hidden]), #task-detail-modal, #member-popup-overlay, .confirm-overlay, .task-card.dragging, .tour-overlay'
   );
 }
 

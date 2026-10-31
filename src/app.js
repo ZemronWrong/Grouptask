@@ -9,6 +9,8 @@ import { renderRegister } from './features/auth/RegisterPage.js';
 import { renderWelcome } from './features/auth/WelcomePage.js';
 import { captureScroll, restoreScroll } from './utils/helpers.js';
 import { screenSkeletonHTML } from './utils/skeletons.js';
+import { showToast, initModalKeyboard } from './utils/ui.js';
+import { syncRejectedMessage } from './utils/errors.js';
 
 const GUEST_PATHS = ['/welcome', '/login', '/register'];
 
@@ -97,6 +99,7 @@ export async function boot() {
   initTheme();
   await openDB();
   initConnectionStatus();
+  initModalKeyboard();
 
   addRoute('/welcome', guestOnly(renderWelcome));
   addRoute('/login', guestOnly(renderLogin));
@@ -165,7 +168,7 @@ export async function boot() {
 
   function hasDirtyInputs() {
     // Check modals
-    if (document.querySelector('.modal-overlay:not([hidden]), #member-popup-overlay')) return true;
+    if (document.querySelector('.modal-overlay:not([hidden]), #member-popup-overlay, .confirm-overlay')) return true;
     // Check any focused or non-empty text inputs/textareas not in a committed form
     const inputs = document.querySelectorAll('input[type="text"], input[type="url"], input[type="email"], textarea');
     for (const el of inputs) {
@@ -228,15 +231,9 @@ export async function boot() {
   // E4: our own change was refused by the server and has been put back
   // (peer reviews show this on their own card instead)
   window.addEventListener('sync-rejected', (e) => {
-    const { collection } = e.detail || {};
-    if (collection !== 'tasks' && collection !== 'proofSubmissions') return;
-    const t = document.createElement('div');
-    t.className = 'toast';
-    t.textContent = collection === 'tasks'
-      ? "The server didn't accept your change to a task (you may not have permission), so it was put back."
-      : "The server didn't accept your submission, so it was undone.";
-    document.body.appendChild(t);
-    setTimeout(() => t.remove(), 4000);
+    const { collection, code } = e.detail || {};
+    const message = syncRejectedMessage(collection, code);
+    if (message) showToast(message, { type: 'error' });
   });
 
   // When the user finishes interacting (blur on inputs), flush any pending reload

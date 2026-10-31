@@ -12,6 +12,8 @@ import {
 } from '../../services/themeService.js';
 import { ICONS } from '../../assets/icons/icons.js';
 import { clearTourFlags } from '../tasks/boardTour.js';
+import { showToast, confirmDialog, withBusy } from '../../utils/ui.js';
+import { shrinkImage } from '../../utils/image.js';
 
 const DEFAULT_AVATARS = [
   '🧙', '🗡️', '🛡️', '🏹', '⚗️', '🐉', '🦅', '🌟', '🎯', '💎'
@@ -73,7 +75,7 @@ export async function renderSettings() {
   app.innerHTML = `
     <header class="board-header">
       <div class="board-header-left">
-        <button class="btn-icon" id="btn-settings-back" title="Back">${ICONS.back}</button>
+        <button class="btn-icon" id="btn-settings-back" title="Back" aria-label="Back">${ICONS.back}</button>
         <h1 class="board-title">${ICONS.settings} Settings</h1>
       </div>
     </header>
@@ -98,6 +100,7 @@ export async function renderSettings() {
               <input type="file" id="avatar-upload" accept="image/*" hidden />
               <button class="btn btn-secondary btn-sm" id="btn-remove-avatar">Remove</button>
             </div>
+            <p class="auth-error" id="avatar-error" role="alert"></p>
           </div>
 
           <div class="settings-avatar-defaults">
@@ -257,23 +260,33 @@ export async function renderSettings() {
   });
 
   // Avatar upload
+  // F4: large pictures are shrunk to 256×256 in the browser instead of rejected
   document.getElementById('avatar-upload').addEventListener('change', async (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    if (file.size > 500000) { alert('Image too large. Max 500KB.'); return; }
+    const errorEl = document.getElementById('avatar-error');
+    errorEl.textContent = '';
+    const uploadLabel = document.querySelector('label[for="avatar-upload"]');
+    uploadLabel?.classList.add('is-busy');
 
-    const reader = new FileReader();
-    reader.onload = async () => {
-      profile.avatar = reader.result;
-      profile.avatarType = 'custom';
-      profile.updatedAt = Date.now();
-      await put(STORES.USER_PROFILES, profile);
-      // Bug fix: profile photos were only saved locally — sync to Firestore
-      // so other group members' onSnapshot listeners fire and they see the new avatar.
-      await addToSyncQueue({ collection: 'userProfiles', docId: profile.uid, operation: 'update', data: profile });
-      renderSettings();
-    };
-    reader.readAsDataURL(file);
+    let avatar;
+    try {
+      avatar = await shrinkImage(file);
+    } catch (err) {
+      uploadLabel?.classList.remove('is-busy');
+      errorEl.textContent = err.message || 'This picture could not be used. Please try another one.';
+      e.target.value = '';
+      return;
+    }
+    profile.avatar = avatar;
+    profile.avatarType = 'custom';
+    profile.updatedAt = Date.now();
+    await put(STORES.USER_PROFILES, profile);
+    // Bug fix: profile photos were only saved locally — sync to Firestore
+    // so other group members' onSnapshot listeners fire and they see the new avatar.
+    await addToSyncQueue({ collection: 'userProfiles', docId: profile.uid, operation: 'update', data: profile });
+    await renderSettings();
+    showToast('Profile picture updated!', { type: 'success' });
   });
 
   // Remove avatar
@@ -305,7 +318,12 @@ export async function renderSettings() {
   });
 
   // Save profile
-  document.getElementById('btn-save-profile').addEventListener('click', async () => {
+  const saveProfileBtn = document.getElementById('btn-save-profile');
+  // F4: Enter in the name field saves, like a form
+  document.getElementById('settings-display-name').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); saveProfileBtn.click(); }
+  });
+  saveProfileBtn.addEventListener('click', () => withBusy(saveProfileBtn, async () => {
     const newName = document.getElementById('settings-display-name').value.trim() || profile.displayName;
     profile.displayName = newName;
     profile.bio = document.getElementById('settings-bio').value.trim();
@@ -329,7 +347,7 @@ export async function renderSettings() {
     }
 
     showSettingsToast('Profile saved!');
-  });
+  }));
 
   // Color theme
   document.querySelectorAll('.theme-btn[data-color]').forEach(btn => {
@@ -423,7 +441,12 @@ export async function renderSettings() {
 
   // Delete account
   document.getElementById('btn-delete-account').addEventListener('click', async () => {
-    if (!confirm('Are you sure? This will mark your account for deletion. The group owner will need to approve.')) return;
+    const ok = await confirmDialog({
+      title: 'Delete your account?',
+      message: 'This marks your account for deletion. The group owner will need to approve it.',
+      confirmLabel: 'Delete my account',
+    });
+    if (!ok) return;
     profile.deleted = true;
     profile.deletedAt = Date.now();
     await put(STORES.USER_PROFILES, profile);
@@ -436,9 +459,5 @@ export async function renderSettings() {
 }
 
 function showSettingsToast(msg) {
-  const t = document.createElement('div');
-  t.className = 'toast';
-  t.textContent = msg;
-  document.body.appendChild(t);
-  setTimeout(() => t.remove(), 2500);
+  showToast(msg, { type: 'success' });
 }

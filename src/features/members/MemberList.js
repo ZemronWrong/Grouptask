@@ -7,6 +7,7 @@ import { getTerm, getRoleName } from '../../services/themeService.js';
 // notify removed — 'Send Warning' button removed (UREB A3)
 import { navigate } from '../../services/router.js';
 import { ICONS } from '../../assets/icons/icons.js';
+import { confirmDialog, withBusy } from '../../utils/ui.js';
 // calculateContributionScore removed from this page — WPS/PE no longer shown on member cards (UREB A2/A3)
 // calculatePEScore removed — WPS/PE no longer shown on other members' cards (UREB A2/A3)
 
@@ -138,45 +139,31 @@ function memberCardHTML(data, isAdmin, isOwner, me, groupId) {
 }
 
 function bindMemberEvents(groupId, membersList) {
-  document.querySelectorAll('.btn-warn-member').forEach(btn => {
-    btn.addEventListener('click', async (e) => {
-      const memberId = e.target.dataset.memberId;
-      const member = membersList.find(m => m.id === memberId);
-      if (member) {
-        await notify({
-          uid: member.uid, type: 'free_rider_alert',
-          title: '⚠️ Activity Warning',
-          message: 'You have been flagged for low participation or overdue tasks. Please complete your assigned tasks.',
-          icon: ICONS.alert, actionLink: `#/group/${groupId}`, groupId
-        });
-        alert(`Warning sent to ${member.displayName}`);
-      }
-    });
-  });
-
   document.querySelectorAll('.btn-restrict-member').forEach(btn => {
-    btn.addEventListener('click', async (e) => {
-      const memberId = e.target.dataset.memberId;
-      const member = membersList.find(m => m.id === memberId);
+    btn.addEventListener('click', () => withBusy(btn, async () => {
+      const member = membersList.find(m => m.id === btn.dataset.memberId);
       if (member) {
         member.restricted = !member.restricted;
         await put(STORES.MEMBERS, member);
-        await addToSyncQueue({ collection: 'members', docId: memberId, operation: 'update', data: member });
+        await addToSyncQueue({ collection: 'members', docId: member.id, operation: 'update', data: member });
         await renderMembers(groupId);
       }
-    });
+    }));
   });
 
   document.querySelectorAll('.btn-kick-member').forEach(btn => {
-    btn.addEventListener('click', async (e) => {
-      if (confirm('Are you sure you want to permanently remove this member from the group?')) {
-        const memberId = e.target.dataset.memberId;
-        const member = membersList.find(m => m.id === memberId);
-        if (member) {
-          await kickMember(member, groupId);
-        }
+    btn.addEventListener('click', async () => {
+      const member = membersList.find(m => m.id === btn.dataset.memberId);
+      const ok = await confirmDialog({
+        title: 'Remove this member?',
+        message: `${member?.displayName || 'This member'} will be permanently removed from the group.`,
+        confirmLabel: 'Remove',
+      });
+      if (!ok) return;
+      await withBusy(btn, async () => {
+        if (member) await kickMember(member, groupId);
         await renderMembers(groupId);
-      }
+      });
     });
   });
 }
@@ -237,26 +224,48 @@ export function sidebarHTML(groupId, currentPath, members, tasks) {
   `;
 }
 
-export function bindSidebarEvents(groupId) {
-  document.getElementById('btn-sidebar-delete-group')?.addEventListener('click', async (e) => {
-    if (confirm('Are you sure you want to delete this board? This action cannot be undone.')) {
-      const gId = e.currentTarget.dataset.groupId;
-      await remove(STORES.GROUPS, gId);
-      await addToSyncQueue({ collection: 'groups', docId: gId, operation: 'delete' });
-      await flushQueue();
-      navigate('#/dashboard');
-    }
-  });
+// The sidebar is re-rendered with every screen, so its buttons use one
+// delegated listener (bound once) instead of listeners on the old elements.
+let sidebarEventsBound = false;
 
-  document.getElementById('btn-sidebar-leave-group')?.addEventListener('click', async (e) => {
-    if (confirm('Are you sure you want to leave this group?')) {
+export function bindSidebarEvents() {
+  if (sidebarEventsBound) return;
+  sidebarEventsBound = true;
+
+  document.addEventListener('click', async (e) => {
+    const deleteBtn = e.target.closest('#btn-sidebar-delete-group');
+    const leaveBtn = e.target.closest('#btn-sidebar-leave-group');
+    if (!deleteBtn && !leaveBtn) return;
+    const groupId = (deleteBtn || leaveBtn).dataset.groupId;
+
+    if (deleteBtn) {
+      const ok = await confirmDialog({
+        title: 'Delete this board?',
+        message: "The board and all its tasks will be deleted for everyone in the group. This can't be undone.",
+        confirmLabel: 'Delete board',
+      });
+      if (!ok) return;
+      await withBusy(deleteBtn, async () => {
+        await remove(STORES.GROUPS, groupId);
+        await addToSyncQueue({ collection: 'groups', docId: groupId, operation: 'delete' });
+        await flushQueue();
+        navigate('#/dashboard');
+      }, { label: 'Deleting…' });
+      return;
+    }
+
+    const ok = await confirmDialog({
+      title: 'Leave this group?',
+      message: 'You will lose access to its board. You can join again later with the invite code.',
+      confirmLabel: 'Leave group',
+    });
+    if (!ok) return;
+    await withBusy(leaveBtn, async () => {
       const user = currentUser();
       const membersList = await getAllByIndex(STORES.MEMBERS, 'groupId', groupId);
       const me = membersList.find(m => m.uid === user.uid);
-      if (me) {
-        await leaveGroup(groupId, me);
-      }
+      if (me) await leaveGroup(groupId, me);
       navigate('#/dashboard');
-    }
+    }, { label: 'Leaving…' });
   });
 }

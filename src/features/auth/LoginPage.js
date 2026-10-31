@@ -1,6 +1,8 @@
 import { signIn, signInWithGoogle } from '../../services/authService.js';
 import { navigate } from '../../services/router.js';
 import { ICONS } from '../../assets/icons/icons.js';
+import { withBusy } from '../../utils/ui.js';
+import { authErrorMessage } from '../../utils/errors.js';
 
 export function renderLogin() {
   const app = document.getElementById('app');
@@ -25,7 +27,7 @@ export function renderLogin() {
             <label for="login-password">Password</label>
             <input id="login-password" type="password" autocomplete="current-password" required minlength="6" />
           </div>
-          <p class="auth-error" id="login-error"></p>
+          <p class="auth-error" id="login-error" role="alert"></p>
           <button class="btn btn-primary" id="btn-login-submit" type="submit">Sign in</button>
         </form>
         <div class="auth-divider"><span>or</span></div>
@@ -43,36 +45,36 @@ export function renderLogin() {
   const submitBtn = document.getElementById('btn-login-submit');
   const googleBtn = document.getElementById('btn-google');
 
-  document.getElementById('login-form').addEventListener('submit', async (e) => {
+  const errorEl = document.getElementById('login-error');
+
+  document.getElementById('login-form').addEventListener('submit', (e) => {
     e.preventDefault();
-    const errorEl = document.getElementById('login-error');
+    if (googleBtn.disabled) return;
     errorEl.textContent = '';
-    submitBtn.disabled = true;
-    submitBtn.textContent = 'Signing in...';
-    try {
-      await signIn(
-        document.getElementById('login-email').value.trim(),
-        document.getElementById('login-password').value,
-      );
-      // F3: the dashboard downloads this user's groups once if this device has none
-      navigate('#/dashboard');
-    } catch (err) {
-      submitBtn.disabled = false;
-      submitBtn.textContent = 'Sign in';
-      errorEl.textContent = err.message || 'Sign in failed.';
-    }
+    return withBusy(submitBtn, async () => {
+      try {
+        await signIn(
+          document.getElementById('login-email').value.trim(),
+          document.getElementById('login-password').value,
+        );
+        // F3: the dashboard downloads this user's groups once if this device has none
+        navigate('#/dashboard');
+      } catch (err) {
+        errorEl.textContent = authErrorMessage(err, 'Sign in failed. Please try again.');
+      }
+    }, { label: 'Signing in…' });
   });
 
-  googleBtn.addEventListener('click', async () => {
-    const errorEl = document.getElementById('login-error');
+  googleBtn.addEventListener('click', () => {
+    if (submitBtn.disabled) return;
     errorEl.textContent = '';
-    googleBtn.disabled = true;
-    try {
-      await signInWithGoogle();
-      navigate('#/dashboard');
-    } catch (err) {
-      googleBtn.disabled = false;
-      errorEl.textContent = err.message || 'Google sign-in failed.';
-    }
+    return withBusy(googleBtn, async () => {
+      try {
+        await signInWithGoogle();
+        navigate('#/dashboard');
+      } catch (err) {
+        errorEl.textContent = authErrorMessage(err, 'Google sign-in failed. Please try again.');
+      }
+    }, { label: 'Opening Google…' });
   });
 }

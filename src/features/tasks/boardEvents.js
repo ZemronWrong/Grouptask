@@ -18,15 +18,10 @@ import { renderAchievementPopup } from './TaskCard.js';
 import { recordEvent, EVENT_TYPES, isCompletionRecorded } from '../../core/eventEngine.js';
 import { awardEligibleBadgesForUser } from '../../core/badgeEngine.js';
 import { openMemberPopup } from './TaskComments.js';
-import { dropBlockReason, dropAction, isAdminMember } from './taskPermissions.js';
+import { dropBlockReason, dropAction, isAdminMember, undoMoveBlockReason } from './taskPermissions.js';
+import { showToast, confirmDialog, withBusy, isBusyButton } from '../../utils/ui.js';
 
-function showToast(msg) {
-  const t = document.createElement('div');
-  t.className = 'toast';
-  t.textContent = msg;
-  document.body.appendChild(t);
-  setTimeout(() => t.remove(), 2500);
-}
+const STATUS_LABELS = { 'todo': 'To Do', 'in-progress': 'In Progress', 'pending-approval': 'Pending Approval', 'done': 'Completed' };
 
 /** Open the 🚀 SUBMIT proof modal for a task (SUBMIT button or drop into Pending Approval). */
 export function openProofSubmitModal(taskId) {
@@ -127,34 +122,36 @@ export function bindBoardEvents(boardContext, rerenderBoard) {
     // Accept Join Request
     const acceptReqBtn = e.target.closest('.btn-accept-request');
     if (acceptReqBtn) {
-      const reqId = acceptReqBtn.dataset.requestId;
-      const currentGroup = await get(STORES.GROUPS, groupId);
-      const reqList = currentGroup?.joinRequests || [];
-      const req = reqList.find((r) => r.id === reqId);
-      if (req) {
-        const roleSel = document.querySelector(`.join-request-role-select[data-request-id="${reqId}"]`);
-        const chosenRole = roleSel?.value || 'member';
-        const newMember = {
-          id: `${groupId}_${req.uid}`,
-          uid: req.uid,
-          groupId,
-          displayName: req.displayName || 'New Member',
-          email: req.email || null,
-          role: chosenRole,
-          joinedAt: Date.now(),
-        };
-        await put(STORES.MEMBERS, newMember);
-        await addToSyncQueue({ collection: 'members', docId: newMember.id, operation: 'add', data: newMember });
+      await withBusy(acceptReqBtn, async () => {
+        const reqId = acceptReqBtn.dataset.requestId;
+        const currentGroup = await get(STORES.GROUPS, groupId);
+        const reqList = currentGroup?.joinRequests || [];
+        const req = reqList.find((r) => r.id === reqId);
+        if (req) {
+          const roleSel = document.querySelector(`.join-request-role-select[data-request-id="${reqId}"]`);
+          const chosenRole = roleSel?.value || 'member';
+          const newMember = {
+            id: `${groupId}_${req.uid}`,
+            uid: req.uid,
+            groupId,
+            displayName: req.displayName || 'New Member',
+            email: req.email || null,
+            role: chosenRole,
+            joinedAt: Date.now(),
+          };
+          await put(STORES.MEMBERS, newMember);
+          await addToSyncQueue({ collection: 'members', docId: newMember.id, operation: 'add', data: newMember });
 
-        // Remove from group join requests
-        currentGroup.joinRequests = reqList.filter((r) => r.id !== reqId);
-        await put(STORES.GROUPS, currentGroup);
-        await addToSyncQueue({ collection: 'groups', docId: groupId, operation: 'update', data: currentGroup });
+          // Remove from group join requests
+          currentGroup.joinRequests = reqList.filter((r) => r.id !== reqId);
+          await put(STORES.GROUPS, currentGroup);
+          await addToSyncQueue({ collection: 'groups', docId: groupId, operation: 'update', data: currentGroup });
 
-        showToast(`Accepted ${req.displayName} as ${chosenRole}!`);
-        await rerenderBoard(groupId);
-        document.getElementById('share-modal').hidden = false;
-      }
+          showToast(`Accepted ${req.displayName} as ${chosenRole}!`, { type: 'success' });
+          await rerenderBoard(groupId);
+          document.getElementById('share-modal').hidden = false;
+        }
+      }, { label: 'Adding…' });
       return;
     }
 
@@ -197,7 +194,7 @@ export function bindBoardEvents(boardContext, rerenderBoard) {
     const statusOpt = e.target.closest('#status-options-container .assignee-option');
     if (statusOpt) {
       if (statusOpt.classList.contains('disabled')) {
-        showToast('Completed tasks are locked. Ask the owner if one was approved by mistake.');
+        showToast('Completed tasks are locked. Ask the owner if one was approved by mistake.', { type: 'error' });
         return;
       }
       document.querySelectorAll('#status-options-container .assignee-option').forEach((o) => o.classList.remove('selected'));
@@ -210,9 +207,11 @@ export function bindBoardEvents(boardContext, rerenderBoard) {
     const selfAssignBtn = e.target.closest('.btn-self-assign');
     if (selfAssignBtn) {
       e.stopPropagation();
-      if (me?.role === 'viewer') { showToast("Viewers can't accept tasks."); return; }
+      if (me?.role === 'viewer') { showToast("Viewers can't accept tasks.", { type: 'error' }); return; }
+      if (isBusyButton(selfAssignBtn)) return;
+      selfAssignBtn.dataset.busy = '1';  // the board re-renders below, replacing the button
       const task = await get(STORES.TASKS, selfAssignBtn.dataset.taskId);
-      if (!task) return;
+      if (!task) { delete selfAssignBtn.dataset.busy; return; }
       task.assignedTo = me.id;
       task.status = 'in-progress';
       task.updatedAt = Date.now();
@@ -232,8 +231,10 @@ export function bindBoardEvents(boardContext, rerenderBoard) {
     const moveToProgressBtn = e.target.closest('.btn-move-to-progress');
     if (moveToProgressBtn) {
       e.stopPropagation();
+      if (isBusyButton(moveToProgressBtn)) return;
+      moveToProgressBtn.dataset.busy = '1';  // the board re-renders below, replacing the button
       const task = await get(STORES.TASKS, moveToProgressBtn.dataset.taskId);
-      if (!task) return;
+      if (!task) { delete moveToProgressBtn.dataset.busy; return; }
       task.status = 'in-progress';
       task.updatedAt = Date.now();
       await put(STORES.TASKS, task);
@@ -245,7 +246,7 @@ export function bindBoardEvents(boardContext, rerenderBoard) {
         description: `${me?.displayName || 'Someone'} moved "${task.title}" to In Progress`,
         meta: { taskId: task.id, taskTitle: task.title },
       });
-      showToast('Moved to In Progress!');
+      showToast('Moved to In Progress!', { type: 'success' });
       await rerenderBoard(groupId);
       return;
     }
@@ -271,7 +272,10 @@ export function bindBoardEvents(boardContext, rerenderBoard) {
     const rejectBtn  = e.target.closest('#btn-reject-proof');
     if (approveBtn || rejectBtn) {
       e.preventDefault();
-      await handleReview(approveBtn ? 'approved' : 'rejected', groupId, members, me, rerenderBoard);
+      const other = document.getElementById(approveBtn ? 'btn-reject-proof' : 'btn-approve-proof');
+      if (isBusyButton(other)) return;  // ignore a second click while the first is saving
+      await withBusy(approveBtn || rejectBtn, () =>
+        handleReview(approveBtn ? 'approved' : 'rejected', groupId, members, me, rerenderBoard));
       return;
     }
 
@@ -279,8 +283,13 @@ export function bindBoardEvents(boardContext, rerenderBoard) {
     const deleteBtn = e.target.closest('#btn-delete-task-modal');
     if (deleteBtn) {
       const taskId = deleteBtn.dataset.taskId;
-      if (!confirm('Delete this task? This cannot be undone.')) return;
       const taskToDelete = await get(STORES.TASKS, taskId);
+      const ok = await confirmDialog({
+        title: 'Delete this task?',
+        message: `"${taskToDelete?.title || 'This task'}" will be removed for everyone in the group. This can't be undone.`,
+        confirmLabel: 'Delete task',
+      });
+      if (!ok) return;
       await remove(STORES.TASKS, taskId);
       await addToSyncQueue({ collection: 'tasks', docId: taskId, operation: 'delete', data: { id: taskId, groupId } });
       await logActivity({
@@ -291,6 +300,7 @@ export function bindBoardEvents(boardContext, rerenderBoard) {
         meta: { taskId },
       });
       document.getElementById('task-detail-modal')?.remove();
+      showToast('Task deleted.', { type: 'success' });
       await rerenderBoard(groupId);
       return;
     }
@@ -315,64 +325,35 @@ export function bindBoardEvents(boardContext, rerenderBoard) {
 
   // ─── "Proceed without link" in proof submit modal ───
   document.addEventListener('click', async (e) => {
-    if (!e.target.closest('#btn-submit-no-link')) return;
-    const { groupId, members, me } = boardContext;
+    const noLinkBtn = e.target.closest('#btn-submit-no-link');
+    if (!noLinkBtn) return;
     const taskId = document.getElementById('submit-task-id').value;
-    if (!taskId) return;
-    const task = await get(STORES.TASKS, taskId);
-    if (!task) return;
-    task.status    = 'pending-approval';
-    task.updatedAt = Date.now();
-    await put(STORES.TASKS, task);
-    await addToSyncQueue({ collection: 'tasks', docId: taskId, operation: 'update', data: task });
-    const admins = members.filter((m) => isAdminMember(m) && m.uid !== me?.uid);
-    for (const a of admins) {
-      await notify({ uid: a.uid, type: 'approval_request', title: 'Approval Requested',
-        message: `${me?.displayName} is requesting approval for "${task.title}"`,
-        icon: '⏳', actionLink: `#/group/${groupId}`, groupId });
-    }
-    document.getElementById('proof-submit-modal').hidden = true;
-    showToast('Submitted for approval!');
-    await rerenderBoard(groupId);
+    if (!taskId || isBusyButton(document.querySelector('#proof-submit-form [type="submit"]'))) return;
+    await withBusy(noLinkBtn, () => submitForApproval(taskId, '', boardContext, rerenderBoard), { label: 'Submitting…' });
   });
 
   // ─── Form submits ───
   document.addEventListener('submit', async (e) => {
-    const { groupId, members, me, proofs } = boardContext;
+    const { groupId, members } = boardContext;
 
     if (e.target.id === 'task-form') {
       e.preventDefault();
-      await saveTask(groupId, members);
-      document.getElementById('task-modal').hidden = true;
-      await rerenderBoard(groupId);
+      const saveBtn = e.submitter || e.target.querySelector('[type="submit"]');
+      await withBusy(saveBtn, async () => {
+        await saveTask(groupId, members);
+        document.getElementById('task-modal').hidden = true;
+        await rerenderBoard(groupId);
+      });
       return;
     }
 
     if (e.target.id === 'proof-submit-form') {
       e.preventDefault();
+      if (isBusyButton(document.getElementById('btn-submit-no-link'))) return;
       const taskId = document.getElementById('submit-task-id').value;
       const link   = document.getElementById('submit-proof-link').value;
-      const task   = await get(STORES.TASKS, taskId);
-      task.status    = 'pending-approval';
-      task.updatedAt = Date.now();
-      await put(STORES.TASKS, task);
-      await addToSyncQueue({ collection: 'tasks', docId: taskId, operation: 'update', data: task });
-      if (link) {
-        const existing = proofs?.find((p) => p.taskId === taskId);
-        const proofId  = existing ? existing.id : generateId();
-        const proof    = { id: proofId, taskId, groupId, memberId: me.id, link, status: 'pending', note: '', updatedAt: Date.now() };
-        await put(STORES.PROOF_SUBMISSIONS, proof);
-        await addToSyncQueue({ collection: 'proofSubmissions', docId: proofId, operation: 'update', data: proof });
-      }
-      const admins = members.filter((m) => isAdminMember(m) && m.uid !== me?.uid);
-      for (const a of admins) {
-        await notify({ uid: a.uid, type: 'approval_request', title: 'Approval Requested',
-          message: `${me.displayName} is requesting approval for "${task.title}"`,
-          icon: '⏳', actionLink: `#/group/${groupId}`, groupId });
-      }
-      document.getElementById('proof-submit-modal').hidden = true;
-      showToast('Submitted for approval!');
-      await rerenderBoard(groupId);
+      const submitBtn = e.submitter || e.target.querySelector('[type="submit"]');
+      await withBusy(submitBtn, () => submitForApproval(taskId, link, boardContext, rerenderBoard), { label: 'Submitting…' });
       return;
     }
   });
@@ -387,11 +368,16 @@ export function bindBoardEvents(boardContext, rerenderBoard) {
     const member   = await get(STORES.MEMBERS, memberId);
     if (!member) return;
     if (role === 'remove') {
-      if (confirm('Remove this member?')) {
-        await kickMember(member, groupId);
-      } else {
+      const ok = await confirmDialog({
+        title: 'Remove this member?',
+        message: `${member.displayName || 'This member'} will be removed from the group.`,
+        confirmLabel: 'Remove',
+      });
+      if (!ok) {
         sel.value = member.role;
+        return;
       }
+      await kickMember(member, groupId);
     } else {
       member.role = role;
       await put(STORES.MEMBERS, member);
@@ -424,6 +410,36 @@ export function bindBoardEvents(boardContext, rerenderBoard) {
 
 // ── Task persistence helpers ──────────────────────────────────────────────────
 
+/**
+ * Move a task to Pending Approval (with an optional proof link). F4: the card
+ * moves and the modal closes first; notifying the admins happens afterwards.
+ */
+async function submitForApproval(taskId, link, { groupId, members, me, proofs }, rerenderBoard) {
+  const task = await get(STORES.TASKS, taskId);
+  if (!task) return;
+  task.status    = 'pending-approval';
+  task.updatedAt = Date.now();
+  await put(STORES.TASKS, task);
+  await addToSyncQueue({ collection: 'tasks', docId: taskId, operation: 'update', data: task });
+  if (link) {
+    const existing = proofs?.find((p) => p.taskId === taskId);
+    const proofId  = existing ? existing.id : generateId();
+    const proof    = { id: proofId, taskId, groupId, memberId: me.id, link, status: 'pending', note: '', updatedAt: Date.now() };
+    await put(STORES.PROOF_SUBMISSIONS, proof);
+    await addToSyncQueue({ collection: 'proofSubmissions', docId: proofId, operation: 'update', data: proof });
+  }
+  document.getElementById('proof-submit-modal').hidden = true;
+  showToast('Submitted for approval!', { type: 'success' });
+  await rerenderBoard(groupId);
+
+  const admins = members.filter((m) => isAdminMember(m) && m.uid !== me?.uid);
+  for (const a of admins) {
+    await notify({ uid: a.uid, type: 'approval_request', title: 'Approval Requested',
+      message: `${me?.displayName} is requesting approval for "${task.title}"`,
+      icon: '⏳', actionLink: `#/group/${groupId}`, groupId });
+  }
+}
+
 /** Reads the task modal form and saves to IndexedDB + sync queue. */
 export async function saveTask(groupId, members) {
   const id    = document.getElementById('task-id').value || generateId();
@@ -448,7 +464,7 @@ export async function saveTask(groupId, members) {
     const blocked = dropBlockReason(oldTask, me, status);
     if (blocked) {
       status = oldTask.status;
-      showToast(blocked.message);
+      showToast(blocked.message, { type: 'error' });
     }
   }
   if (!oldTask && status === 'done') {
@@ -461,7 +477,7 @@ export async function saveTask(groupId, members) {
   let weight = isAdminEdit ? (Number(document.getElementById('task-weight-input').value) || 100) : (oldTask?.weight || 100);
   if (oldTask && weight !== oldTask.weight && me?.id && (oldTask.assignedTo === me.id || assignedTo === me.id)) {
     weight = oldTask.weight;
-    showToast("You can't change the weight of your own task. Ask the other admin to change it.");
+    showToast("You can't change the weight of your own task. Ask the other admin to change it.", { type: 'error' });
   }
 
   const task = {
@@ -479,8 +495,6 @@ export async function saveTask(groupId, members) {
     createdBy:   isNew ? me?.id : undefined,
     creatorName: isNew ? me?.displayName : undefined,
   };
-
-  const STATUS_LABELS = { 'todo': 'To Do', 'in-progress': 'In Progress', 'pending-approval': 'Pending Approval', 'done': 'Completed' };
 
   if (!isNew) {
     task.createdAt   = oldTask?.createdAt || Date.now();
@@ -552,18 +566,20 @@ export async function saveTask(groupId, members) {
 /**
  * Move a task to a new status column (called by drag-drop).
  *
- * Returns what the board should do next:
+ * Returns `{ action }`, what the board should do next:
  *   'submit' — a member, or an admin with their own card, dropped into Pending
  *              Approval: open the SUBMIT proof modal (the card only moves when they
  *              confirm; cancel leaves it in place), so the other admin has a
  *              submission to review (E1b).
  *   'review' — admin dropped into Completed: open the REVIEW APPROVAL modal, so
  *              approval always goes through handleReview.
- *   null     — the card was moved, or the move was refused (with a toast).
+ *   'moved'  — the card was moved; `previous` and `applied` ({ status, assignedTo })
+ *              let the board offer Undo (F4).
+ *   null     — nothing happened, or the move was refused (with a toast).
  */
 export async function moveTask(taskId, newStatus, groupId, members) {
   const task = await get(STORES.TASKS, taskId);
-  if (!task || task.status === newStatus) return null;
+  if (!task || task.status === newStatus) return { action: null };
 
   const user    = currentUser();
   const me      = members.find((m) => m.uid === user?.uid);
@@ -575,21 +591,20 @@ export async function moveTask(taskId, newStatus, groupId, members) {
   // assignee can approve to Completed. Viewers can't move anything.
   const blocked = dropBlockReason(task, me, newStatus);
   if (blocked) {
-    showToast(blocked.message);
-    return null;
+    showToast(blocked.message, { type: 'error' });
+    return { action: null };
   }
   const action = dropAction(task, me, newStatus);
-  if (action !== 'move') return action;
+  if (action !== 'move') return { action };
 
   const oldStatus = task.status;
+  const previous  = { status: task.status, assignedTo: task.assignedTo ?? null };
   const accepting = !isAdmin && !task.assignedTo;
   if (accepting) task.assignedTo = me.id;  // same as the Accept button
   task.status    = newStatus;
   task.updatedAt = Date.now();
   await put(STORES.TASKS, task);
   await addToSyncQueue({ collection: 'tasks', docId: taskId, operation: 'update', data: task });
-
-  const STATUS_LABELS = { 'todo': 'To Do', 'in-progress': 'In Progress', 'pending-approval': 'Pending Approval', 'done': 'Completed' };
 
   await logActivity(accepting ? {
     groupId, type: 'task_assigned',
@@ -612,7 +627,35 @@ export async function moveTask(taskId, newStatus, groupId, members) {
         message: `A task needs approval: "${task.title}"`, icon: '⏳', actionLink: `#/group/${groupId}`, groupId });
     }
   }
-  return null;
+  return { action: 'moved', previous, applied: { status: task.status, assignedTo: task.assignedTo ?? null } };
+}
+
+/**
+ * F4: put a dragged card back where it was. Refused (with a toast) if the
+ * card changed since, e.g. someone else moved or approved it.
+ * Returns true if the card was moved back.
+ */
+export async function undoMove(taskId, { previous, applied }, groupId, members) {
+  const task = await get(STORES.TASKS, taskId);
+  const reason = undoMoveBlockReason(task, applied);
+  if (reason) {
+    showToast(reason, { type: 'error' });
+    return false;
+  }
+  task.status     = previous.status;
+  task.assignedTo = previous.assignedTo;
+  task.updatedAt  = Date.now();
+  await put(STORES.TASKS, task);
+  await addToSyncQueue({ collection: 'tasks', docId: taskId, operation: 'update', data: task });
+
+  const me = members.find((m) => m.uid === currentUser()?.uid);
+  await logActivity({
+    groupId, type: 'task_moved',
+    actorId: me?.id || null, actorName: me?.displayName || 'Someone',
+    description: `Moved "${task.title}" back to ${STATUS_LABELS[previous.status] || previous.status} (undo)`,
+    meta: { taskId, taskTitle: task.title, oldStatus: applied.status, newStatus: previous.status },
+  });
+  return true;
 }
 
 // ── Proof review ──────────────────────────────────────────────────────────────
@@ -629,13 +672,13 @@ async function handleReview(status, groupId, members, me, rerenderBoard) {
   // twice, and rejecting it would reopen it.
   if (task.status === 'done') {
     document.getElementById('proof-review-modal').hidden = true;
-    showToast('Completed tasks are locked. Ask the owner if one was approved by mistake.');
+    showToast('Completed tasks are locked. Ask the owner if one was approved by mistake.', { type: 'error' });
     return;
   }
 
   // B4: Admin cannot approve their own proof/task
   if (status === 'approved' && task?.assignedTo === me?.id) {
-    showToast('Admins cannot approve their own tasks. Another admin must approve this.');
+    showToast('Admins cannot approve their own tasks. Another admin must approve this.', { type: 'error' });
     return;
   }
 
@@ -652,66 +695,65 @@ async function handleReview(status, groupId, members, me, rerenderBoard) {
     }
   }
 
-  let newBadges = [];
+  // F4: the card moves (and the modal closes) straight away; notifications,
+  // points and badges are worked out afterwards. If the server refuses the
+  // change, the E4 roll-back puts the card back and says so.
   if (status === 'approved') {
     task.status = 'done'; task.completedAt = Date.now(); task.updatedAt = Date.now();
-    await put(STORES.TASKS, task);
-    await addToSyncQueue({ collection: 'tasks', docId: taskId, operation: 'update', data: task });
-
-    // E1a: skip points and badges if this task's completion was already recorded
-    if (assignee && !(await isCompletionRecorded(groupId, taskId))) {
-      await notify({ uid: assignee.uid, type: 'approval_granted', title: 'Task Approved! 🎉',
-        message: `Your task "${task.title}" was approved.`, icon: '✅', actionLink: `#/group/${groupId}`, groupId });
-
-      const isOverdue = task.deadline && Date.now() > new Date(task.deadline).getTime();
-      const weight = Number(task.weight) || 0;
-
-      // 1. Record the Unified Event
-      await recordEvent({
-        eventType: isOverdue ? EVENT_TYPES.CARD_COMPLETE_OVERDUE : EVENT_TYPES.CARD_COMPLETE,
-        userId: assignee.uid,
-        memberId: assignee.id,
-        boardId: groupId,
-        boardPoints: isOverdue ? Math.round(weight * 0.5) : weight,
-        xpDelta: isOverdue ? Math.round(weight * 0.8) : weight,
-        repDelta: isOverdue ? -2 : 5,
-        metadata: { taskId, taskTitle: task.title, weight }
-      });
-
-      // 2. Evaluate and award all eligible badges for the assignee using the
-      //    comprehensive engine (correctly syncs to Firestore and covers all badge types).
-      //    Bug fix: the previous code used simplified hardcoded values (contributionScore: 100,
-      //    avgPeerScore: 3) and was duplicated from the self-complete path. Using
-      //    awardEligibleBadgesForUser ensures real data is used and badges reach Firestore.
-      newBadges = await awardEligibleBadgesForUser(assignee.uid);
-
-      // Send a badge_earned notification to the assignee for each new badge.
-      // awardEligibleBadgesForUser handles the IndexedDB/Firestore write but not notifications.
-      for (const b of newBadges) {
-        await notify({ uid: assignee.uid, type: 'badge_earned', title: 'Badge Earned! 🏆',
-          message: `You earned the "${b.label}" badge!`, icon: b.icon || '🏆', actionLink: '#/profile', groupId });
-      }
-    }
   } else {
     task.status = 'in-progress'; task.updatedAt = Date.now();
-    await put(STORES.TASKS, task);
-    await addToSyncQueue({ collection: 'tasks', docId: taskId, operation: 'update', data: task });
+  }
+  await put(STORES.TASKS, task);
+  await addToSyncQueue({ collection: 'tasks', docId: taskId, operation: 'update', data: task });
+
+  document.getElementById('proof-review-modal').hidden = true;
+  showToast(status === 'approved' ? 'Task approved!' : 'Task sent back to In Progress.', { type: 'success' });
+  await rerenderBoard(groupId);
+
+  if (status !== 'approved') {
     if (assignee) {
       await notify({ uid: assignee.uid, type: 'approval_rejected', title: 'Task Rejected',
         message: `Your task "${task.title}" was rejected. ${note ? 'Reason: ' + note : ''}`,
         icon: '❌', actionLink: `#/group/${groupId}`, groupId });
     }
+    return;
   }
 
-  document.getElementById('proof-review-modal').hidden = true;
-  showToast(status === 'approved' ? 'Task Approved!' : 'Task Rejected');
-  await rerenderBoard(groupId);
+  // E1a: skip points and badges if this task's completion was already recorded
+  if (!assignee || (await isCompletionRecorded(groupId, taskId))) return;
+
+  await notify({ uid: assignee.uid, type: 'approval_granted', title: 'Task Approved! 🎉',
+    message: `Your task "${task.title}" was approved.`, icon: '✅', actionLink: `#/group/${groupId}`, groupId });
+
+  const isOverdue = task.deadline && Date.now() > new Date(task.deadline).getTime();
+  const weight = Number(task.weight) || 0;
+
+  // 1. Record the Unified Event
+  await recordEvent({
+    eventType: isOverdue ? EVENT_TYPES.CARD_COMPLETE_OVERDUE : EVENT_TYPES.CARD_COMPLETE,
+    userId: assignee.uid,
+    memberId: assignee.id,
+    boardId: groupId,
+    boardPoints: isOverdue ? Math.round(weight * 0.5) : weight,
+    xpDelta: isOverdue ? Math.round(weight * 0.8) : weight,
+    repDelta: isOverdue ? -2 : 5,
+    metadata: { taskId, taskTitle: task.title, weight }
+  });
+
+  // 2. Evaluate and award all eligible badges for the assignee using the
+  //    comprehensive engine (correctly syncs to Firestore and covers all badge types).
+  const newBadges = await awardEligibleBadgesForUser(assignee.uid);
+
+  // Send a badge_earned notification to the assignee for each new badge.
+  // awardEligibleBadgesForUser handles the IndexedDB/Firestore write but not notifications.
+  for (const b of newBadges) {
+    await notify({ uid: assignee.uid, type: 'badge_earned', title: 'Badge Earned! 🏆',
+      message: `You earned the "${b.label}" badge!`, icon: b.icon || '🏆', actionLink: '#/profile', groupId });
+  }
 
   // Show achievement popup if the currently logged-in user is the one who was just approved
-  // (i.e., the assignee approved their own task, or same-user scenario).
-  // Bug fix: was checking assignee?.id === me?.id which always fails when a leader approves
-  // someone else's task. Now we check by uid so it works regardless of role.
-  if (newBadges.length > 0 && assignee?.uid === me?.uid) {
+  // (checked by uid so it works regardless of role).
+  if (newBadges.length > 0 && assignee.uid === me?.uid) {
     setTimeout(() => renderAchievementPopup(newBadges[0]), 500);
   }
 }

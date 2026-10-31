@@ -6,6 +6,7 @@ import { getBadgeById } from '../../core/badgeEngine.js';
 import { escapeHtml, generateId } from '../../utils/helpers.js';
 import { currentUser } from '../../services/authService.js';
 import { sidebarHTML, bindSidebarEvents } from '../members/MemberList.js';
+import { showToast } from '../../utils/ui.js';
 import { getTerm } from '../../services/themeService.js';
 import { ICONS } from '../../assets/icons/icons.js';
 // F3: register only the parts the bar chart uses, not every chart type
@@ -216,14 +217,6 @@ export async function renderLeaderboard(groupId) {
   }, 0);
 }
 
-function showToast(msg) {
-  const t = document.createElement('div');
-  t.className = 'toast';
-  t.textContent = msg;
-  document.body.appendChild(t);
-  setTimeout(() => t.remove(), 2500);
-}
-
 // ── Per-card "Syncing… / Saved ✓" indicator (E2b) ─────────────────────────────
 // The review is saved locally first; the sync engine uploads it in the
 // background and announces each upload with a window event.
@@ -368,7 +361,7 @@ export async function renderEvaluation(groupId) {
       const evaluatee = members.find(m => m.id === evaluateeId);
       const scoreInput = form.querySelector(`input[name="score_${evaluateeId}"]:checked`);
       if (!scoreInput) {
-        showToast('Please select a star rating first.');
+        showToast('Please select a star rating first.', { type: 'error' });
         return;
       }
       const score = parseInt(scoreInput.value);
@@ -407,7 +400,7 @@ export async function renderEvaluation(groupId) {
         await addToSyncQueue({ collection: 'peerReviews', docId: reviewId, operation: 'update', data: review });
       } catch (err) {
         console.error('[Evaluation] Could not save review:', err);
-        showToast('Could not save your evaluation. Please try again.');
+        showToast('Could not save your evaluation. Please try again.', { type: 'error' });
         if (submitBtn) {
           submitBtn.disabled = false;
           submitBtn.textContent = previousLabel;
@@ -474,7 +467,7 @@ export async function renderEvaluation(groupId) {
       }
       inFlight.delete(evaluateeId);
 
-      showToast(`Evaluation for ${evaluatee?.displayName || 'teammate'} submitted! ⭐`);
+      showToast(`Evaluation for ${evaluatee?.displayName || 'teammate'} submitted! ⭐`, { type: 'success' });
     });
   });
 }

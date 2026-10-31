@@ -8,6 +8,7 @@ import { navigate } from '../../services/router.js';
 import { getNotifications, getUnreadCount, markAsRead, markAllAsRead } from '../../services/notificationService.js';
 import { ICONS } from '../../assets/icons/icons.js';
 import { skeletonListHTML } from '../../utils/skeletons.js';
+import { showToast } from '../../utils/ui.js';
 
 /* ── Notification type → SVG icon ── */
 function notifIcon(type) {
@@ -36,14 +37,14 @@ export async function bellIconHTML() {
   const count = await getUnreadCount(user.uid);
   return `
     <div class="notif-bell-container" id="notif-bell-container">
-      <button class="btn-icon notif-bell-btn" id="btn-notifications" title="Notifications">
+      <button class="btn-icon notif-bell-btn" id="btn-notifications" title="Notifications" aria-label="Notifications">
         ${ICONS.bell}
         ${count > 0 ? `<span class="notif-badge-count">${count > 9 ? '9+' : count}</span>` : ''}
       </button>
       <div class="notif-dropdown" id="notif-dropdown" hidden>
         <div class="notif-dropdown-header">
           <span class="notif-dropdown-title">${ICONS.bell} Notifications</span>
-          <button class="btn-icon-sm" id="btn-mark-all-read" title="Mark all as read">
+          <button class="btn-icon-sm" id="btn-mark-all-read" title="Mark all as read" aria-label="Mark all as read">
             ${ICONS.checkAll} Read All
           </button>
         </div>
@@ -103,11 +104,7 @@ export function bindBellEvents() {
       await renderNotifList(currentFilter);
       updateBellBadge();
       
-      const t = document.createElement('div');
-      t.className = 'toast';
-      t.textContent = 'All notifications marked as read';
-      document.body.appendChild(t);
-      setTimeout(() => t.remove(), 2500);
+      showToast('All notifications marked as read', { type: 'success' });
     }
   });
 

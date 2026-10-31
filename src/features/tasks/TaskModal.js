@@ -63,9 +63,12 @@ export function taskModalHTML(members, statuses, isAdmin = true) {
             </div>
             <div class="form-group">
               <label for="task-weight-input">${getTerm('rewardLabel')}</label>
-              <input type="number" id="task-weight-input" min="10" step="10" value="100" required />
+              <input type="number" id="task-weight-input" min="10" step="10" value="100" required aria-describedby="task-weight-hint" />
             </div>
           </div>
+          <p class="field-hint" id="task-weight-hint">
+            This is the task's weight. Bigger or harder tasks get a higher weight (steps of 10; 100 is a normal task). Contribution scores are based on weight.
+          </p>
           <div class="form-group">
             <label for="task-deadline-input">Deadline</label>
             <input type="date" id="task-deadline-input" />
@@ -434,10 +437,13 @@ export async function openTaskDetailModal(task, groupId, members, viewIsAdmin, m
     document.getElementById('task-detail-modal')?.remove();
   });
 
-  // Re-render only the comments section on new comment
-  bindCommentEvents(task.id, groupId, members, async () => {
-    const newCommentsHTML = await renderCommentsUI(task.id, groupId, members);
-    document.querySelector('.comments-section').outerHTML = newCommentsHTML;
-    bindCommentEvents(task.id, groupId, members);
-  });
+  // Re-render only the comments section when one is deleted (new comments are
+  // added in place). Re-binds with itself so it keeps working after the first time.
+  const refreshComments = async () => {
+    const section = container.querySelector('.comments-section');
+    if (!section) return;
+    section.outerHTML = await renderCommentsUI(task.id, groupId, members);
+    bindCommentEvents(task.id, groupId, members, refreshComments);
+  };
+  bindCommentEvents(task.id, groupId, members, refreshComments);
 }
