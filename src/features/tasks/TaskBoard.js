@@ -178,6 +178,11 @@ export async function renderTaskBoard(groupId) {
             <button class="btn btn-secondary btn-sm" id="btn-share-btn" title="Share" aria-label="Share">
               <span class="btn-icon-inline">${ICONS.link}</span><span class="btn-label"> Share</span>
             </button>
+            ${isAdmin ? `
+            <button class="btn btn-secondary btn-sm" id="btn-export-tasks-csv"
+              title="Download task list (CSV) - does not include peer ratings" aria-label="Export task list as CSV">
+              <span class="btn-icon-inline">⬇</span><span class="btn-label"> Export Tasks</span>
+            </button>` : ''}
             <button class="btn btn-secondary btn-sm btn-board-tour" id="btn-board-tour" type="button"
               title="How this board works" aria-label="How this board works">?</button>
           </div>
@@ -247,6 +252,11 @@ export async function renderTaskBoard(groupId) {
   // Wire the separate share button (not the avatar stack)
   document.getElementById('btn-share-btn')?.addEventListener('click', () => {
     document.getElementById('share-modal').hidden = false;
+  });
+
+  // A6: Download task list as CSV (admin-only, excludes peer ratings and scores).
+  document.getElementById('btn-export-tasks-csv')?.addEventListener('click', () => {
+    exportTasksCSV(_boardContext.tasks, _boardContext.members, _boardContext.group);
   });
 
   // D6: replay the board tutorial. The tour only reads the page; it never writes.
@@ -456,4 +466,41 @@ async function patchBoard(groupId, changes) {
     if (badge) badge.outerHTML = pendingBadgeHTML(data.pendingProofsCount);
     else headerRight?.insertAdjacentHTML('afterbegin', pendingBadgeHTML(data.pendingProofsCount));
   }
+}
+
+
+/**
+ * A6: Download the board's task list as CSV.
+ * Does NOT include peer reviews, scores, or any sensitive data (UREB A1/A2).
+ */
+function exportTasksCSV(tasks, members, group) {
+  const STATUS_LABELS = {
+    'todo': 'To Do',
+    'in-progress': 'In Progress',
+    'pending-approval': 'Pending Approval',
+    'done': 'Completed',
+  };
+  const headers = ['Title', 'Assignee', 'Status', 'Weight', 'Difficulty', 'Task Type', 'Deadline'];
+  const rows = (tasks || []).map((t) => {
+    const assignee = members.find((m) => m.id === t.assignedTo)?.displayName || 'Unassigned';
+    const status   = STATUS_LABELS[t.status] || t.status;
+    const deadline = t.deadline ? new Date(t.deadline).toLocaleDateString() : '';
+    return [
+      '"' + (t.title || '').replace(/"/g, '""') + '"',
+      '"' + assignee.replace(/"/g, '""') + '"',
+      '"' + status + '"',
+      t.weight ?? '',
+      t.difficulty || '',
+      '"' + (t.taskType || '').replace(/"/g, '""') + '"',
+      deadline,
+    ].join(',');
+  });
+  const csv = [headers.join(','), ...rows].join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = (group?.name || 'tasks').replace(/[^a-z0-9]/gi, '_') + '-tasks-' + new Date().toISOString().slice(0, 10) + '.csv';
+  a.click();
+  URL.revokeObjectURL(url);
 }
