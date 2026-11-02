@@ -1,0 +1,672 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GroupTask — Floorplan</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0f1117; --surface: #161b27; --surface2: #1e2535; --border: #2a3347;
+    --text: #e2e8f0; --muted: #64748b; --accent: #6366f1;
+    --green: #22c55e; --blue: #3b82f6; --purple: #a855f7;
+    --orange: #f97316; --red: #ef4444; --teal: #14b8a6; --yellow: #eab308;
+    --pink: #ec4899;
+  }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; overflow: hidden; height: 100vh; display: flex; flex-direction: column; }
+
+  /* TOP BAR */
+  #topbar { display: flex; align-items: center; gap: 12px; padding: 10px 16px; background: var(--surface); border-bottom: 1px solid var(--border); flex-shrink: 0; flex-wrap: wrap; }
+  #topbar h1 { font-size: 14px; font-weight: 700; color: var(--text); letter-spacing: 0.05em; white-space: nowrap; }
+  #topbar h1 span { color: var(--accent); }
+  .legend { display: flex; gap: 10px; flex-wrap: wrap; margin-left: auto; }
+  .legend-item { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--muted); }
+  .legend-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+  .search-box { padding: 4px 10px; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 12px; outline: none; width: 160px; }
+  .search-box:focus { border-color: var(--accent); }
+  .hint { font-size: 11px; color: var(--muted); white-space: nowrap; }
+
+  /* MAIN */
+  #main { display: flex; flex: 1; overflow: hidden; }
+
+  /* CANVAS */
+  #canvas-wrap { flex: 1; overflow: hidden; position: relative; cursor: grab; }
+  #canvas-wrap.panning { cursor: grabbing; }
+  svg#map { width: 100%; height: 100%; display: block; }
+
+  /* NODE STYLES */
+  .node { cursor: pointer; }
+  .node rect { rx: 10; stroke-width: 1.5; transition: filter 0.15s; }
+  .node:hover rect { filter: brightness(1.25); }
+  .node.selected rect { stroke-width: 2.5; filter: brightness(1.3); }
+  .node-title { font-size: 11.5px; font-weight: 600; fill: #fff; pointer-events: none; }
+  .node-sub { font-size: 9.5px; fill: rgba(255,255,255,0.6); pointer-events: none; }
+  .node-badge { font-size: 9px; fill: rgba(255,255,255,0.5); pointer-events: none; }
+
+  /* EDGES */
+  .edge { fill: none; stroke-width: 1.5; opacity: 0.35; pointer-events: none; transition: opacity 0.2s; }
+  .edge.highlight { opacity: 1; stroke-width: 2.5; }
+  .edge-label { font-size: 9px; fill: var(--muted); pointer-events: none; }
+
+  /* DETAIL PANEL */
+  #detail { width: 290px; background: var(--surface); border-left: 1px solid var(--border); padding: 16px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; flex-shrink: 0; transition: transform 0.2s; }
+  #detail.hidden { transform: translateX(100%); width: 0; padding: 0; border: none; }
+  #detail h2 { font-size: 14px; font-weight: 700; }
+  #detail .type-badge { display: inline-block; font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 12px; margin-bottom: 4px; }
+  #detail .desc { font-size: 12px; color: var(--muted); line-height: 1.5; }
+  #detail .section-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin-top: 4px; }
+  #detail .fn-list { display: flex; flex-direction: column; gap: 3px; }
+  #detail .fn-item { font-size: 11px; font-family: 'Consolas', monospace; color: var(--text); background: var(--surface2); padding: 3px 7px; border-radius: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #detail .link-list { display: flex; flex-direction: column; gap: 3px; }
+  #detail .link-item { font-size: 11px; color: var(--accent); cursor: pointer; display: flex; align-items: center; gap: 4px; }
+  #detail .link-item:hover { text-decoration: underline; }
+  #detail .close-btn { align-self: flex-end; background: none; border: 1px solid var(--border); color: var(--muted); border-radius: 6px; padding: 3px 10px; font-size: 11px; cursor: pointer; }
+  #detail .close-btn:hover { color: var(--text); }
+
+  /* ZOOM */
+  #zoom-controls { position: absolute; bottom: 16px; right: 16px; display: flex; flex-direction: column; gap: 4px; }
+  .zoom-btn { width: 32px; height: 32px; border-radius: 8px; background: var(--surface); border: 1px solid var(--border); color: var(--text); font-size: 18px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+  .zoom-btn:hover { background: var(--surface2); }
+
+  /* MINIMAP */
+  #minimap { position: absolute; bottom: 16px; left: 16px; width: 130px; height: 85px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  #minimap svg { width: 100%; height: 100%; }
+
+  scrollbar-width: thin;
+</style>
+</head>
+<body>
+
+<div id="topbar">
+  <h1>🗺️ <span>GroupTask</span> Architecture Floorplan</h1>
+  <input class="search-box" id="search" placeholder="Search modules…" autocomplete="off">
+  <div class="legend">
+    <div class="legend-item"><div class="legend-dot" style="background:#6366f1"></div>Entry / Router</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#3b82f6"></div>Screen</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#22c55e"></div>Service</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#a855f7"></div>Core Engine</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#f97316"></div>Config / Firebase</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#14b8a6"></div>Utility</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#eab308"></div>Task UI</div>
+  </div>
+  <span class="hint">Scroll to zoom · Drag to pan · Click to inspect</span>
+</div>
+
+<div id="main">
+  <div id="canvas-wrap">
+    <svg id="map">
+      <defs>
+        <marker id="arr" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+          <path d="M0,0 L0,6 L8,3 z" fill="rgba(100,116,139,0.6)"/>
+        </marker>
+        <marker id="arr-hi" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+          <path d="M0,0 L0,6 L8,3 z" fill="#6366f1"/>
+        </marker>
+      </defs>
+      <g id="viewport">
+        <g id="edges-layer"></g>
+        <g id="nodes-layer"></g>
+      </g>
+    </svg>
+    <div id="zoom-controls">
+      <button class="zoom-btn" id="zoom-in" title="Zoom In">+</button>
+      <button class="zoom-btn" id="zoom-out" title="Zoom Out">−</button>
+      <button class="zoom-btn" id="zoom-fit" title="Fit Screen" style="font-size:13px">⊙</button>
+    </div>
+    <div id="minimap"><svg id="mm-svg"></svg></div>
+  </div>
+  <div id="detail" class="hidden">
+    <button class="close-btn" id="close-detail">✕ Close</button>
+    <div id="detail-content"></div>
+  </div>
+</div>
+
+<script>
+// ─── DATA ───────────────────────────────────────────────────────────────────
+const NODES = [
+  // Entry
+  { id:'main',        label:'main.js',          sub:'App entry point',              type:'entry',   color:'#6366f1', x:460, y:40,
+    desc:'Bootstraps the app: loads CSS, calls boot(), registers the Service Worker.',
+    fns:['boot()','registerServiceWorker()'],
+    links:['app','serviceWorker'] },
+
+  // App shell
+  { id:'app',         label:'app.js',           sub:'App shell & router',           type:'entry',   color:'#6366f1', x:460, y:160,
+    desc:'Defines all routes, guards auth, lazy-loads screen chunks, starts sync when signed in, and orchestrates navigation.',
+    fns:['boot()','requireAuth()','guestOnly()','loadSync()','syncGroup()'],
+    links:['router','authService','indexedDBService','themeService','connectionStatus','session','loginPage','registerPage','welcomePage','syncService','helpers','skeletons','ui','errors','navLayout'] },
+
+  // Config / Firebase
+  { id:'firebaseConfig', label:'firebaseConfig.js', sub:'Firebase SDK init',        type:'config',  color:'#f97316', x:80, y:40,
+    desc:'Initialises Firebase App and Auth. Exports auth handle and isMock flag for test environments.',
+    fns:['initializeApp()','getAuth()'],
+    links:[] },
+  { id:'firestoreDb',    label:'firestoreDb.js',    sub:'Firestore instance',       type:'config',  color:'#f97316', x:80, y:160,
+    desc:'Creates and exports the Firestore db instance. Uses memory cache in test (isMock) mode.',
+    fns:['initializeFirestore()'],
+    links:['firebaseConfig'] },
+
+  // Auth screens
+  { id:'welcomePage',  label:'WelcomePage.js',   sub:'Landing / onboarding',       type:'screen',  color:'#3b82f6', x:80, y:320,
+    desc:'The first screen a new user sees. Explains the app and directs them to sign up or log in.',
+    fns:['renderWelcome()'], links:['router'] },
+  { id:'loginPage',    label:'LoginPage.js',     sub:'Email & Google login',        type:'screen',  color:'#3b82f6', x:80, y:430,
+    desc:'Handles email/password login and Google OAuth. On success navigates to dashboard.',
+    fns:['renderLogin()'], links:['authService','router','ui'] },
+  { id:'registerPage', label:'RegisterPage.js',  sub:'New account creation',        type:'screen',  color:'#3b82f6', x:80, y:540,
+    desc:'Collects name, email and password. Creates Firebase Auth user via authService.',
+    fns:['renderRegister()'], links:['authService','router','ui'] },
+
+  // Screens
+  { id:'dashboard',   label:'Dashboard.js',     sub:'Home screen',                  type:'screen',  color:'#3b82f6', x:460, y:320,
+    desc:'Shows the user\'s groups, quick stats, notifications badge, and "Create / Join group" flow.',
+    fns:['renderDashboard()','bindDashboardEvents()'],
+    links:['memberService','indexedDBService','router','notificationService','ui','helpers'] },
+  { id:'taskBoard',   label:'TaskBoard.js',     sub:'Kanban board',                 type:'screen',  color:'#3b82f6', x:800, y:160,
+    desc:'The main work surface. Renders the 4-column Kanban, handles drag-drop, task editing, peer evaluation, proof submission, and the CSV export.',
+    fns:['renderBoard()','patchBoard()','exportTasksCSV()'],
+    links:['taskService','memberService','taskPermissions','peerEvalEngine','eventEngine','badgeEngine','activityLog','notificationService','indexedDBService','dragDrop','boardEvents','boardTabs','boardTour','taskCard','taskModal','taskComments','router','ui','helpers','themeService','scoringEngine'] },
+  { id:'leaderboard', label:'Leaderboard.js',   sub:'Scores & analytics',           type:'screen',  color:'#3b82f6', x:800, y:320,
+    desc:'Shows board-points ranking, per-user "Your Scores" card (contribution + PE, hidden if scoresHidden), charts, and badge showcase.',
+    fns:['renderLeaderboard()'],
+    links:['indexedDBService','eventEngine','scoringEngine','peerEvalEngine','badgeEngine','memberService','router','ui','helpers'] },
+  { id:'memberList',  label:'MemberList.js',    sub:'Team & risks panel',           type:'screen',  color:'#3b82f6', x:800, y:430,
+    desc:'Lists group members, their roles and task counts. Risk labels hidden during study (A3). Reused as a sidebar by AuditHistory.',
+    fns:['renderMemberList()','sidebarHTML()','bindSidebarEvents()'],
+    links:['indexedDBService','memberService','scoringEngine','router','ui','helpers'] },
+  { id:'auditHistory',label:'AuditHistory.js',  sub:'Activity log viewer',          type:'screen',  color:'#3b82f6', x:800, y:540,
+    desc:'Displays the group activity feed (who did what and when). Uses MemberList sidebar for navigation.',
+    fns:['renderAuditHistory()'],
+    links:['indexedDBService','memberList','activityLog','router','helpers'] },
+  { id:'profile',     label:'Profile.js',       sub:'User profile page',            type:'screen',  color:'#3b82f6', x:800, y:650,
+    desc:'Shows avatar, display name, XP, badges, and PE average (only shown when ≥2 ratings received).',
+    fns:['renderProfile()'],
+    links:['authService','indexedDBService','eventEngine','badgeEngine','memberService','router','ui','helpers','image'] },
+  { id:'settings',    label:'Settings.js',      sub:'Account & data settings',      type:'screen',  color:'#3b82f6', x:800, y:760,
+    desc:'Theme switcher, display-name edit, data export (excludes others\' peer reviews per A1), sign-out, and danger-zone (delete account).',
+    fns:['renderSettings()'],
+    links:['authService','indexedDBService','memberService','themeService','router','ui','helpers'] },
+
+  // Services
+  { id:'router',        label:'router.js',        sub:'Hash-based SPA router',      type:'service', color:'#22c55e', x:220, y:160,
+    desc:'Registers hash routes, matches URL to handlers, supports params, and guards with middleware.',
+    fns:['addRoute()','initRouter()','navigate()','reloadCurrentRoute()','currentPath()'], links:[] },
+  { id:'authService',   label:'authService.js',   sub:'Firebase Auth wrapper',      type:'service', color:'#22c55e', x:220, y:40,
+    desc:'Wraps Firebase Auth: sign-up, sign-in, Google OAuth, sign-out, display-name update, and auth-state change listener.',
+    fns:['onAuthChange()','authReady()','signUp()','signIn()','signOut()','currentUser()','signInWithGoogle()'],
+    links:['firebaseConfig'] },
+  { id:'syncService',   label:'syncService.js',   sub:'Firestore ↔ IndexedDB sync', type:'service', color:'#22c55e', x:220, y:280,
+    desc:'Listens to Firestore real-time snapshots for 7 collections, writes to IndexedDB, and flushes the offline write queue to Firestore.',
+    fns:['startSync()','stopSync()','fetchGroupDataOnce()','flushQueue()','setRemoteChangeCallback()'],
+    links:['firestoreDb','indexedDBService','conflictResolver','connectionStatus'] },
+  { id:'taskService',   label:'taskService.js',   sub:'Task CRUD + notifications',  type:'service', color:'#22c55e', x:220, y:390,
+    desc:'Create, read, update, delete tasks. Queues writes to IndexedDB sync queue. Notifies the assignee when a task is assigned.',
+    fns:['createTask()','saveTask()','deleteTask()','getGroupTasks()','getTask()','notifyAssignee()'],
+    links:['indexedDBService','helpers','notificationService','activityLog'] },
+  { id:'memberService', label:'memberService.js', sub:'Groups & membership',        type:'service', color:'#22c55e', x:220, y:500,
+    desc:'Create/join groups, manage invite codes, kick members, leave groups, and bootstrap user data on first login.',
+    fns:['createGroup()','joinGroupByCode()','bootstrapUserData()','getGroupMembers()','kickMember()','leaveGroup()','sendJoinRequest()'],
+    links:['indexedDBService','syncService','helpers','notificationService','activityLog','firestoreDb'] },
+  { id:'notificationService', label:'notificationService.js', sub:'In-app notifications', type:'service', color:'#22c55e', x:220, y:610,
+    desc:'Stores notifications in IndexedDB, marks them read, and requests browser push permission.',
+    fns:['notify()','getNotifications()','getUnreadCount()','markAsRead()','markAllAsRead()','requestPermission()'],
+    links:['indexedDBService','helpers'] },
+  { id:'activityLog',   label:'activityLogService.js', sub:'Activity feed writer', type:'service', color:'#22c55e', x:220, y:700,
+    desc:'Appends entries to the activity log (tasks done, members joined, PE submitted, etc.).',
+    fns:['logActivity()','getGroupActivity()'],
+    links:['indexedDBService','helpers'] },
+  { id:'indexedDBService', label:'indexedDBService.js', sub:'Local data store',    type:'service', color:'#22c55e', x:220, y:790,
+    desc:'Thin wrapper over IndexedDB: CRUD helpers for 9 stores (tasks, members, groups, events, badges, notifications, …) plus sync queue management.',
+    fns:['openDB()','get()','put()','add()','remove()','getAll()','getAllByIndex()','addToSyncQueue()','getSyncQueue()'],
+    links:['indexedDB'] },
+  { id:'conflictResolver', label:'conflictResolver.js', sub:'Merge conflict logic', type:'service', color:'#22c55e', x:80, y:700,
+    desc:'When a remote Firestore update conflicts with a local queued write, this decides which wins (last-write-wins by updatedAt).',
+    fns:['resolveConflict()'], links:[] },
+  { id:'connectionStatus', label:'connectionStatus.js', sub:'Online/offline indicator', type:'service', color:'#22c55e', x:80, y:790,
+    desc:'Watches navigator.onLine, counts queued writes, and updates the sync status chip in the UI.',
+    fns:['initConnectionStatus()','setConnectionStatusVisible()','signalSyncing()','signalSynced()'],
+    links:['indexedDBService','firebaseConfig'] },
+  { id:'session',       label:'session.js',       sub:'First-login bootstrap',      type:'service', color:'#22c55e', x:80, y:890,
+    desc:'Runs bootstrapUserData once per device per user to pull group memberships from Firestore into IndexedDB.',
+    fns:['bootstrapUserDataOnce()','hasLocalMemberships()'],
+    links:['indexedDBService','once'] },
+  { id:'themeService',  label:'themeService.js',  sub:'Theme + term overrides',     type:'service', color:'#22c55e', x:460, y:870,
+    desc:'Loads and applies the colour theme. Allows groups to rename "Task" → custom term. Provides getTerm() for all UI text.',
+    fns:['initTheme()','getTerm()','getRoleName()','setTheme()'], links:[] },
+  { id:'serviceWorker', label:'serviceWorker.js', sub:'PWA service worker reg',     type:'service', color:'#22c55e', x:460, y:970,
+    desc:'Registers the service worker (public/sw.js) which caches the app shell and assets for offline use.',
+    fns:['registerServiceWorker()'], links:[] },
+
+  // Core engines
+  { id:'scoringEngine', label:'scoringEngine.js', sub:'WPS contribution score',     type:'engine',  color:'#a855f7', x:600, y:700,
+    desc:'Calculates each member\'s Weighted Peer Score (WPS share = their done-task weight ÷ group total). Also detects free-rider risk.',
+    fns:['calculateContributionScore()','calculateAllContributionScores()','detectFreeRider()','detectAllFreeRiders()'],
+    links:[] },
+  { id:'peerEvalEngine',label:'peerEvaluationEngine.js', sub:'Peer rating logic',  type:'engine',  color:'#a855f7', x:600, y:810,
+    desc:'Stores and retrieves peer evaluations. Computes the average PE score (only shown when ≥2 ratings received, per UREB A1/A2).',
+    fns:['submitPeerEvaluation()','getPeerRatingSummary()','getMyRatings()'],
+    links:['indexedDBService','notificationService','activityLog'] },
+  { id:'eventEngine',   label:'eventEngine.js',   sub:'XP & board points ledger',  type:'engine',  color:'#a855f7', x:600, y:920,
+    desc:'Append-only events ledger. Records CARD_COMPLETE, PEER_EVAL, etc. Calculates board points and global XP from the ledger.',
+    fns:['recordEvent()','getBoardEvents()','getUserEvents()','calculateBoardPoints()','calculateGlobalXP()','calculateTotalReputation()'],
+    links:['indexedDBService','helpers','reputationEngine'] },
+  { id:'badgeEngine',   label:'badgeEngine.js',   sub:'Badge evaluation & award',  type:'engine',  color:'#a855f7', x:600, y:600,
+    desc:'Evaluates 6 badge categories (streak, comment, card, peer-nominated, hidden, board) and writes awarded badges to IndexedDB.',
+    fns:['awardEligibleBadgesForUser()','evaluateBoardBadges()','evaluateStreakBadges()','getAllBadges()'],
+    links:['reputationEngine','badgeIcons','indexedDBService','gamificationEngine','scoringEngine','eventEngine'] },
+  { id:'gamificationEngine', label:'gamificationEngine.js', sub:'Streak calculator', type:'engine', color:'#a855f7', x:600, y:480,
+    desc:'Calculates login/completion streaks and XP thresholds used by the badge engine.',
+    fns:['calculateStreak()','getXPLevel()'], links:['icons'] },
+  { id:'reputationEngine',  label:'reputationEngine.js',   sub:'Reputation rules',  type:'engine', color:'#a855f7', x:600, y:370,
+    desc:'Defines which events count toward reputation and whether a member qualifies as a free-rider.',
+    fns:['countsTowardReputation()','isFreeloader()','calculateTotalReputation()'], links:[] },
+
+  // Task UI sub-modules
+  { id:'taskCard',      label:'TaskCard.js',      sub:'Card HTML renderer',         type:'taskui',  color:'#eab308', x:980, y:160,
+    desc:'Pure function: takes a task object and returns the HTML string for a Kanban card.',
+    fns:['cardHTML()'], links:['helpers','themeService','icons'] },
+  { id:'taskModal',     label:'TaskModal.js',     sub:'Task detail modal',          type:'taskui',  color:'#eab308', x:980, y:280,
+    desc:'Renders and binds the task detail/edit modal with proof upload, status change, and comments tab.',
+    fns:['openTaskModal()','closeTaskModal()'],
+    links:['taskComments','helpers','themeService'] },
+  { id:'taskComments',  label:'TaskComments.js',  sub:'Comments & peer eval UI',   type:'taskui',  color:'#eab308', x:980, y:400,
+    desc:'Renders the comments thread and the peer evaluation star-rating form inside the task modal.',
+    fns:['renderCommentsUI()','bindCommentEvents()'],
+    links:['indexedDBService','activityLog','badgeEngine','ui','icons','helpers'] },
+  { id:'taskPermissions',label:'taskPermissions.js', sub:'Role-based action guards', type:'taskui', color:'#eab308', x:980, y:520,
+    desc:'Single source of truth for what each role (owner/co-admin/member/viewer) can do on the board.',
+    fns:['canApproveTask()','canEditTask()','canDeleteTask()','canChangeWeight()'], links:[] },
+  { id:'dragDrop',      label:'dragDrop.js',      sub:'Drag-and-drop engine',       type:'taskui',  color:'#eab308', x:980, y:640,
+    desc:'Handles native HTML5 drag events for moving cards between columns. Fires task-moved events.',
+    fns:['initDragDrop()','destroyDragDrop()'], links:[] },
+  { id:'boardEvents',   label:'boardEvents.js',   sub:'Board event listeners',      type:'taskui',  color:'#eab308', x:980, y:760,
+    desc:'Binds all click/submit handlers on the board: create task, approve, kick, share invite code, etc.',
+    fns:['bindBoardEvents()'], links:['taskService','memberService','ui','router'] },
+  { id:'boardTabs',     label:'boardTabs.js',     sub:'Mobile column tabs',         type:'taskui',  color:'#eab308', x:980, y:870,
+    desc:'In narrow viewports, renders tab buttons for switching between Kanban columns.',
+    fns:['initBoardTabs()'], links:[] },
+  { id:'boardTour',     label:'boardTour.js',     sub:'Interactive tutorial',       type:'taskui',  color:'#eab308', x:980, y:970,
+    desc:'Step-by-step onboarding tour for first-time board users using the tour utility.',
+    fns:['startBoardTour()'], links:['tour'] },
+
+  // Utilities
+  { id:'helpers',    label:'helpers.js',    sub:'General helpers',          type:'util', color:'#14b8a6', x:460, y:650,
+    desc:'escapeHtml, formatTimeAgo, formatRelative, generateId, generateInviteCode, captureScroll, restoreScroll.',
+    fns:['escapeHtml()','formatTimeAgo()','generateId()','generateInviteCode()','captureScroll()','restoreScroll()'], links:[] },
+  { id:'ui',         label:'ui.js',         sub:'Toast & modal helpers',     type:'util', color:'#14b8a6', x:460, y:740,
+    desc:'showToast, confirmDialog, initModalKeyboard — reusable UI primitives used across all screens.',
+    fns:['showToast()','confirmDialog()','initModalKeyboard()'], links:[] },
+  { id:'formatters', label:'formatters.js', sub:'Date & number formatters',  type:'util', color:'#14b8a6', x:460, y:830,
+    desc:'Formats dates, percentages and large numbers for display.',
+    fns:['formatDate()','formatPercent()'], links:[] },
+  { id:'validators', label:'validators.js', sub:'Input validation',          type:'util', color:'#14b8a6', x:460, y:920,
+    desc:'Email, password-strength, and field-length validators used by auth screens.',
+    fns:['validateEmail()','validatePassword()'], links:[] },
+  { id:'skeletons',  label:'skeletons.js',  sub:'Loading skeleton HTML',     type:'util', color:'#14b8a6', x:660, y:160,
+    desc:'Returns animated skeleton HTML for screens while data loads, preventing layout shift.',
+    fns:['screenSkeletonHTML()'], links:[] },
+  { id:'navLayout',  label:'navLayout.js',  sub:'Nav layout manager',        type:'util', color:'#14b8a6', x:660, y:280,
+    desc:'Handles responsive bottom-nav / sidebar layout switching based on viewport width.',
+    fns:['initNavLayout()'], links:[] },
+  { id:'errors',     label:'errors.js',     sub:'Error message strings',     type:'util', color:'#14b8a6', x:660, y:390,
+    desc:'Centralised user-facing error messages (sync rejected, permission denied, etc.).',
+    fns:['syncRejectedMessage()'], links:[] },
+  { id:'once',       label:'once.js',       sub:'Run-once guard',            type:'util', color:'#14b8a6', x:660, y:500,
+    desc:'oncePerKey(key, fn) — runs fn only once per key across the app lifetime (used for data bootstrap).',
+    fns:['oncePerKey()'], links:[] },
+  { id:'image',      label:'image.js',      sub:'Image resizer',             type:'util', color:'#14b8a6', x:660, y:610,
+    desc:'Resizes and compresses uploaded proof/avatar images client-side before storing.',
+    fns:['resizeImage()'], links:[] },
+  { id:'tour',       label:'tour.js',       sub:'Tour step engine',          type:'util', color:'#14b8a6', x:660, y:720,
+    desc:'Generic tooltip tour: steps array → rendered spotlight + tooltip with next/back navigation.',
+    fns:['startTour()','endTour()'], links:['helpers'] },
+
+  // Assets/lib
+  { id:'icons',      label:'icons.js',      sub:'UI icon set',               type:'util', color:'#14b8a6', x:460, y:490,
+    desc:'Exports SVG icon strings for tasks, badges, status indicators, and navigation.',
+    fns:['ICONS'], links:[] },
+  { id:'badgeIcons', label:'badgeIcons.js', sub:'Badge icon set',            type:'util', color:'#14b8a6', x:460, y:570,
+    desc:'Exports badge-specific SVG icons keyed by badge ID.',
+    fns:['BADGE_ICONS'], links:[] },
+  { id:'indexedDB',  label:'indexedDB.js',  sub:'Raw IDB promise wrapper',   type:'util', color:'#14b8a6', x:80, y:970,
+    desc:'Low-level IndexedDB helpers (promisifyRequest, openDatabase) used only by indexedDBService.',
+    fns:['promisifyRequest()','openDatabase()'], links:[] },
+];
+
+// Edges: [from, to, label]
+const EDGES = [
+  ['main','app','boot()'],
+  ['main','serviceWorker','register'],
+  ['app','router','routes'],
+  ['app','authService','auth state'],
+  ['app','indexedDBService','IDB'],
+  ['app','themeService','theme'],
+  ['app','connectionStatus','status'],
+  ['app','session','bootstrap'],
+  ['app','loginPage','render'],
+  ['app','registerPage','render'],
+  ['app','welcomePage','render'],
+  ['app','syncService','lazy load'],
+  ['app','ui','toast/modal'],
+  ['app','helpers','scroll'],
+  ['app','skeletons','skeleton'],
+  ['app','navLayout','layout'],
+  ['app','errors','messages'],
+  ['firestoreDb','firebaseConfig','app+isMock'],
+  ['authService','firebaseConfig','auth'],
+  ['connectionStatus','firebaseConfig','isMock'],
+  ['connectionStatus','indexedDBService','queue'],
+  ['session','indexedDBService','stores'],
+  ['session','once','oncePerKey'],
+  ['syncService','firestoreDb','Firestore'],
+  ['syncService','indexedDBService','IDB'],
+  ['syncService','conflictResolver','merge'],
+  ['syncService','connectionStatus','signal'],
+  ['taskService','indexedDBService','IDB'],
+  ['taskService','helpers','generateId'],
+  ['taskService','notificationService','notify'],
+  ['taskService','activityLog','log'],
+  ['memberService','indexedDBService','IDB'],
+  ['memberService','syncService','flush'],
+  ['memberService','helpers','generateId'],
+  ['memberService','notificationService','notify'],
+  ['memberService','activityLog','log'],
+  ['memberService','firestoreDb','Firestore'],
+  ['notificationService','indexedDBService','IDB'],
+  ['notificationService','helpers','generateId'],
+  ['activityLog','indexedDBService','IDB'],
+  ['activityLog','helpers','generateId'],
+  ['indexedDBService','indexedDB','IDB'],
+  ['badgeEngine','reputationEngine','isFreeloader'],
+  ['badgeEngine','badgeIcons','icons'],
+  ['badgeEngine','indexedDBService','IDB'],
+  ['badgeEngine','gamificationEngine','streak'],
+  ['badgeEngine','scoringEngine','CS'],
+  ['badgeEngine','eventEngine','reputation'],
+  ['eventEngine','indexedDBService','IDB'],
+  ['eventEngine','helpers','generateId'],
+  ['eventEngine','reputationEngine','filter'],
+  ['gamificationEngine','icons','ICONS'],
+  // Screens → services
+  ['dashboard','memberService','groups'],
+  ['dashboard','indexedDBService','IDB'],
+  ['dashboard','router','navigate'],
+  ['dashboard','notificationService','notifs'],
+  ['dashboard','ui','toast'],
+  ['taskBoard','taskService','CRUD'],
+  ['taskBoard','memberService','members'],
+  ['taskBoard','taskPermissions','perms'],
+  ['taskBoard','peerEvalEngine','PE'],
+  ['taskBoard','eventEngine','XP'],
+  ['taskBoard','badgeEngine','badges'],
+  ['taskBoard','activityLog','log'],
+  ['taskBoard','notificationService','notify'],
+  ['taskBoard','indexedDBService','IDB'],
+  ['taskBoard','dragDrop','DnD'],
+  ['taskBoard','boardEvents','events'],
+  ['taskBoard','boardTabs','tabs'],
+  ['taskBoard','boardTour','tour'],
+  ['taskBoard','taskCard','render'],
+  ['taskBoard','taskModal','modal'],
+  ['taskBoard','scoringEngine','WPS'],
+  ['leaderboard','indexedDBService','IDB'],
+  ['leaderboard','eventEngine','points'],
+  ['leaderboard','scoringEngine','WPS'],
+  ['leaderboard','peerEvalEngine','PE avg'],
+  ['leaderboard','badgeEngine','badges'],
+  ['leaderboard','memberService','members'],
+  ['memberList','indexedDBService','IDB'],
+  ['memberList','memberService','CRUD'],
+  ['memberList','scoringEngine','CS'],
+  ['auditHistory','indexedDBService','IDB'],
+  ['auditHistory','memberList','sidebar'],
+  ['auditHistory','activityLog','feed'],
+  ['profile','authService','user'],
+  ['profile','indexedDBService','IDB'],
+  ['profile','eventEngine','XP'],
+  ['profile','badgeEngine','badges'],
+  ['profile','memberService','memberships'],
+  ['profile','image','resize'],
+  ['settings','authService','auth'],
+  ['settings','indexedDBService','export'],
+  ['settings','memberService','leave'],
+  ['settings','themeService','theme'],
+  ['taskModal','taskComments','comments'],
+  ['taskModal','helpers','format'],
+  ['taskComments','indexedDBService','IDB'],
+  ['taskComments','activityLog','log'],
+  ['taskComments','badgeEngine','badges'],
+  ['taskComments','ui','toast'],
+  ['boardEvents','taskService','save'],
+  ['boardEvents','memberService','kick/invite'],
+  ['boardEvents','ui','toast/confirm'],
+  ['boardTour','tour','steps'],
+  ['peerEvalEngine','indexedDBService','IDB'],
+  ['peerEvalEngine','notificationService','notify'],
+  ['peerEvalEngine','activityLog','log'],
+  ['tour','helpers','escapeHtml'],
+];
+
+// ─── RENDER ──────────────────────────────────────────────────────────────────
+const svgNS = 'http://www.w3.org/2000/svg';
+const W = 145, H = 62;
+let transform = { x: 0, y: 0, scale: 1 };
+let selectedId = null;
+
+const vp = document.getElementById('viewport');
+const edgesLayer = document.getElementById('edges-layer');
+const nodesLayer = document.getElementById('nodes-layer');
+
+function cx(n) { return n.x + W/2; }
+function cy(n) { return n.y + H/2; }
+
+const nodeMap = {};
+NODES.forEach(n => nodeMap[n.id] = n);
+
+const edgeEls = {};
+EDGES.forEach(([from, to, label]) => {
+  const a = nodeMap[from], b = nodeMap[to];
+  if (!a || !b) return;
+  const g = document.createElementNS(svgNS, 'g');
+  const path = document.createElementNS(svgNS, 'path');
+  path.setAttribute('class','edge');
+  path.setAttribute('stroke', a.color || '#64748b');
+  path.setAttribute('marker-end','url(#arr)');
+  const dx = cx(b)-cx(a), dy = cy(b)-cy(a);
+  const mx = cx(a)+dx*0.5, my = cy(a)+dy*0.5 - Math.abs(dx)*0.15;
+  path.setAttribute('d', `M${cx(a)},${cy(a)} Q${mx},${my} ${cx(b)},${cy(b)}`);
+  g.appendChild(path);
+  edgesLayer.appendChild(g);
+  const key = from+'→'+to;
+  edgeEls[key] = { el: path, from, to };
+});
+
+const nodeEls = {};
+NODES.forEach(n => {
+  const g = document.createElementNS(svgNS, 'g');
+  g.setAttribute('class','node');
+  g.setAttribute('transform', `translate(${n.x},${n.y})`);
+  g.setAttribute('data-id', n.id);
+
+  const rect = document.createElementNS(svgNS, 'rect');
+  rect.setAttribute('width', W); rect.setAttribute('height', H);
+  rect.setAttribute('rx', 10);
+  rect.setAttribute('fill', n.color + '22');
+  rect.setAttribute('stroke', n.color);
+  g.appendChild(rect);
+
+  const strip = document.createElementNS(svgNS, 'rect');
+  strip.setAttribute('width', 4); strip.setAttribute('height', H);
+  strip.setAttribute('rx', 10); strip.setAttribute('fill', n.color);
+  g.appendChild(strip);
+
+  const title = document.createElementNS(svgNS, 'text');
+  title.setAttribute('class','node-title');
+  title.setAttribute('x', 14); title.setAttribute('y', 22);
+  title.textContent = n.label;
+  g.appendChild(title);
+
+  const sub = document.createElementNS(svgNS, 'text');
+  sub.setAttribute('class','node-sub');
+  sub.setAttribute('x', 14); sub.setAttribute('y', 38);
+  sub.textContent = n.sub;
+  g.appendChild(sub);
+
+  const fnCount = (n.fns||[]).length;
+  if (fnCount) {
+    const badge = document.createElementNS(svgNS, 'text');
+    badge.setAttribute('class','node-badge');
+    badge.setAttribute('x', W-8); badge.setAttribute('y', H-8);
+    badge.setAttribute('text-anchor','end');
+    badge.textContent = fnCount + ' fn' + (fnCount>1?'s':'');
+    g.appendChild(badge);
+  }
+
+  g.addEventListener('click', () => selectNode(n.id));
+  nodesLayer.appendChild(g);
+  nodeEls[n.id] = { g, rect };
+});
+
+function applyTransform() {
+  vp.setAttribute('transform', `translate(${transform.x},${transform.y}) scale(${transform.scale})`);
+  updateMinimap();
+}
+
+function fitView() {
+  const xs = NODES.map(n=>n.x), ys = NODES.map(n=>n.y);
+  const minX=Math.min(...xs)-20, minY=Math.min(...ys)-20;
+  const maxX=Math.max(...xs)+W+20, maxY=Math.max(...ys)+H+20;
+  const svgEl = document.getElementById('map');
+  const vw = svgEl.clientWidth || window.innerWidth - 300, vh = svgEl.clientHeight || window.innerHeight - 50;
+  const scaleX = vw/(maxX-minX), scaleY = vh/(maxY-minY);
+  transform.scale = Math.min(scaleX, scaleY, 1)*0.92;
+  transform.x = (vw - (maxX-minX)*transform.scale)/2 - minX*transform.scale;
+  transform.y = (vh - (maxY-minY)*transform.scale)/2 - minY*transform.scale;
+  applyTransform();
+}
+
+setTimeout(fitView, 60);
+
+let dragging=false, startX, startY, startTX, startTY;
+const wrap = document.getElementById('canvas-wrap');
+wrap.addEventListener('mousedown', e=>{
+  if(e.target.closest('.node')) return;
+  dragging=true; startX=e.clientX; startY=e.clientY;
+  startTX=transform.x; startTY=transform.y;
+  wrap.classList.add('panning');
+});
+window.addEventListener('mousemove', e=>{
+  if(!dragging) return;
+  transform.x = startTX + (e.clientX-startX);
+  transform.y = startTY + (e.clientY-startY);
+  applyTransform();
+});
+window.addEventListener('mouseup', ()=>{ dragging=false; wrap.classList.remove('panning'); });
+
+wrap.addEventListener('wheel', e=>{
+  e.preventDefault();
+  const factor = e.deltaY<0?1.1:0.91;
+  const rect = wrap.getBoundingClientRect();
+  const mx = e.clientX-rect.left, my = e.clientY-rect.top;
+  transform.x = mx - (mx-transform.x)*factor;
+  transform.y = my - (my-transform.y)*factor;
+  transform.scale *= factor;
+  transform.scale = Math.max(0.15, Math.min(transform.scale, 4));
+  applyTransform();
+}, {passive:false});
+
+document.getElementById('zoom-in').onclick = ()=>{ transform.scale=Math.min(transform.scale*1.25,4); applyTransform(); };
+document.getElementById('zoom-out').onclick = ()=>{ transform.scale=Math.max(transform.scale*0.8,0.15); applyTransform(); };
+document.getElementById('zoom-fit').onclick = fitView;
+
+function selectNode(id) {
+  if(selectedId && nodeEls[selectedId]) nodeEls[selectedId].g.classList.remove('selected');
+  Object.values(edgeEls).forEach(e=>{ e.el.classList.remove('highlight'); e.el.setAttribute('marker-end','url(#arr)'); });
+
+  if(selectedId === id) { selectedId=null; showDetail(null); return; }
+  selectedId = id;
+  nodeEls[id].g.classList.add('selected');
+
+  Object.values(edgeEls).forEach(e=>{
+    if(e.from===id || e.to===id) {
+      e.el.classList.add('highlight');
+      e.el.setAttribute('stroke', nodeMap[id].color);
+      e.el.setAttribute('marker-end','url(#arr-hi)');
+    }
+  });
+  showDetail(nodeMap[id]);
+}
+
+const detail = document.getElementById('detail');
+const detailContent = document.getElementById('detail-content');
+document.getElementById('close-detail').onclick = ()=>{ selectNode(selectedId); };
+
+function showDetail(node) {
+  if(!node) { detail.classList.add('hidden'); return; }
+  detail.classList.remove('hidden');
+
+  const outEdges = EDGES.filter(e=>e[0]===node.id).map(e=>nodeMap[e[1]]).filter(Boolean);
+  const inEdges = EDGES.filter(e=>e[1]===node.id).map(e=>nodeMap[e[0]]).filter(Boolean);
+
+  detailContent.innerHTML = `
+    <span class="type-badge" style="background:${node.color}33;color:${node.color}">${node.type.toUpperCase()}</span>
+    <h2>${node.label}</h2>
+    <p class="desc">${node.desc||''}</p>
+    ${node.fns&&node.fns.length?`
+    <div class="section-label">Exports</div>
+    <div class="fn-list">${node.fns.map(f=>`<div class="fn-item">${f}</div>`).join('')}</div>`:''}
+    ${outEdges.length?`
+    <div class="section-label">Imports from</div>
+    <div class="link-list">${outEdges.map(n=>`<div class="link-item" onclick="selectNode('${n.id}')">→ ${n.label}</div>`).join('')}</div>`:''}
+    ${inEdges.length?`
+    <div class="section-label">Used by</div>
+    <div class="link-list">${inEdges.map(n=>`<div class="link-item" onclick="selectNode('${n.id}')">← ${n.label}</div>`).join('')}</div>`:''}
+  `;
+}
+window.selectNode = selectNode;
+
+document.getElementById('search').addEventListener('input', e=>{
+  const q = e.target.value.toLowerCase();
+  NODES.forEach(n=>{
+    const el = nodeEls[n.id];
+    if(!el) return;
+    const match = !q || n.label.toLowerCase().includes(q) || (n.sub||'').toLowerCase().includes(q) || (n.desc||'').toLowerCase().includes(q);
+    el.g.style.opacity = match ? '1' : '0.15';
+  });
+  Object.values(edgeEls).forEach(e=>{
+    if(!q) { e.el.style.opacity=''; return; }
+    const match = (nodeMap[e.from]?.label.toLowerCase().includes(q)) || (nodeMap[e.to]?.label.toLowerCase().includes(q));
+    e.el.style.opacity = match?'0.6':'0.05';
+  });
+});
+
+function updateMinimap() {
+  const mm = document.getElementById('mm-svg');
+  const xs=NODES.map(n=>n.x), ys=NODES.map(n=>n.y);
+  const minX=Math.min(...xs)-20, minY=Math.min(...ys)-20;
+  const maxX=Math.max(...xs)+W+20, maxY=Math.max(...ys)+H+20;
+  const mW=130, mH=85;
+  const sx=mW/(maxX-minX), sy=mH/(maxY-minY), sc=Math.min(sx,sy);
+  mm.innerHTML = '';
+  NODES.forEach(n=>{
+    const r = document.createElementNS(svgNS,'rect');
+    r.setAttribute('x',(n.x-minX)*sc); r.setAttribute('y',(n.y-minY)*sc);
+    r.setAttribute('width',W*sc); r.setAttribute('height',H*sc);
+    r.setAttribute('rx',2); r.setAttribute('fill',n.color+'88');
+    mm.appendChild(r);
+  });
+  const svgEl = document.getElementById('map');
+  const vr = document.createElementNS(svgNS,'rect');
+  const vpX = (-transform.x/transform.scale - minX)*sc;
+  const vpY = (-transform.y/transform.scale - minY)*sc;
+  const vpW = ((svgEl.clientWidth||800)/transform.scale)*sc;
+  const vpH = ((svgEl.clientHeight||600)/transform.scale)*sc;
+  vr.setAttribute('x',vpX); vr.setAttribute('y',vpY);
+  vr.setAttribute('width',vpW); vr.setAttribute('height',vpH);
+  vr.setAttribute('fill','none'); vr.setAttribute('stroke','#fff'); vr.setAttribute('stroke-width','1.5'); vr.setAttribute('opacity','0.6');
+  mm.appendChild(vr);
+}
+updateMinimap();
+</script>
+</body>
+</html>
