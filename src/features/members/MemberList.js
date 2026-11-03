@@ -1,4 +1,4 @@
-import { STORES, get, getAllByIndex, put, remove, addToSyncQueue } from '../../services/indexedDBService.js';
+import { STORES, get, getAll, getAllByIndex, put, remove, addToSyncQueue } from '../../services/indexedDBService.js';
 import { kickMember, leaveGroup } from '../../services/memberService.js';
 import { flushQueue } from '../../services/syncService.js';
 import { escapeHtml } from '../../utils/helpers.js';
