@@ -90,7 +90,10 @@ export function taskCardHTML(task, members, proofs, comments, viewIsAdmin, me, p
           ${task.deadline ? `<span class="task-deadline ${deadlineClass}">⏳ ${formatRelative(task.deadline)}</span>` : ''}
           ${commentCount > 0 ? `<span class="badge badge-subtle">💬 ${commentCount}</span>` : ''}
         </div>
-        ${canDrag ? '<span class="drag-handle" title="Drag to move" aria-hidden="true">⋮⋮</span>' : ''}
+        <div class="task-card-actions">
+          ${viewIsAdmin ? `<button class="btn-icon btn-edit-task-card" data-task-id="${task.id}" title="Edit task" aria-label="Edit task"><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>` : ''}
+          ${canDrag ? '<span class="drag-handle" title="Drag to move" aria-hidden="true">⋮⋮</span>' : ''}
+        </div>
       </div>
       <h3 class="task-title" title="${escapeHtml(task.title)}">${escapeHtml(task.title)}</h3>
       ${task.description ? `<p class="task-desc">${escapeHtml(task.description)}</p>` : ''}

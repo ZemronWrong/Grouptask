@@ -71,7 +71,7 @@ export function taskModalHTML(members, statuses, isAdmin = true) {
           </p>
           <div class="form-group">
             <label for="task-deadline-input">Deadline</label>
-            <input type="date" id="task-deadline-input" />
+            <input type="datetime-local" id="task-deadline-input" />
           </div>
           <div class="form-group">
             <label>Assign To</label>

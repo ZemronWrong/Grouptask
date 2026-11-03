@@ -43,9 +43,9 @@ export function stepAfter(i, dir, count = DEMO_STEPS.length) {
 }
 
 const FEATURES = [
-  { icon: '📶', title: 'Works offline and syncs later', text: 'Your work is saved on your device first and uploads when you are back online.' },
-  { icon: '⚖️', title: 'Fair contribution scores', text: 'Approved tasks count by their weight, so everyone can see their fair share.' },
-  { icon: '🏅', title: 'Points, badges, and a leaderboard', text: 'Earn points for approved work, keep streaks going, and unlock badges.' },
+  { icon: ICONS.activity, title: 'Works offline and syncs later', text: 'Your work is saved on your device first and uploads when you are back online.' },
+  { icon: ICONS.trending, title: 'Fair contribution scores', text: 'Approved tasks count by their weight, so everyone can see their fair share.' },
+  { icon: ICONS.trophy, title: 'Points, badges, and a leaderboard', text: 'Earn points for approved work, keep streaks going, and unlock badges.' },
 ];
 
 function prefersReducedMotion() {
@@ -67,7 +67,7 @@ function demoCardHTML(step) {
   return `
     <div class="wd-card-title">Write the survey questions</div>
     <div class="wd-card-row">
-      <span class="wd-weight" title="Weight">⚖ 30</span>
+      <span class="wd-weight" title="Weight">★ 30</span>
       <span class="wd-avatar" ${step >= 1 ? '' : 'hidden'} title="You">Y</span>
     </div>
     <div class="wd-submit" ${step === 2 ? '' : 'hidden'}>🚀 Submit for approval</div>

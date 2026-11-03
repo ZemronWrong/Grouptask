@@ -305,9 +305,10 @@ export function bindBoardEvents(boardContext, rerenderBoard) {
       return;
     }
 
-    // Edit task (from detail modal)
-    const editBtn = e.target.closest('#btn-edit-task-modal');
+    // Edit task (from detail modal OR from card edit button)
+    const editBtn = e.target.closest('#btn-edit-task-modal') || e.target.closest('.btn-edit-task-card');
     if (editBtn) {
+      e.stopPropagation();
       const task = await get(STORES.TASKS, editBtn.dataset.taskId);
       document.getElementById('task-detail-modal')?.remove();
       if (task) openTaskModal(task);
