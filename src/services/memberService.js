@@ -147,6 +147,10 @@ export async function joinGroupByCode({ inviteCode, uid, displayName }) {
 
   if (!group) throw new Error('Invite code not found. Double-check the code and try again.');
 
+  // If join mode is 'request', joining by code is not allowed directly
+  if ((group.joinMode || 'auto') === 'request') {
+    throw new Error('JOIN_REQUIRES_APPROVAL');
+  }
 
   const existing = await getAllByIndex(STORES.MEMBERS, 'groupId', group.id);
   if (existing.some((m) => m.uid === uid)) return group;

@@ -1,4 +1,6 @@
 import { STORES, get, getAll, getAllByIndex, put, addToSyncQueue, getSyncQueue } from '../../services/indexedDBService.js';
+// profileMap for avatar images
+
 import { calculateBoardPoints } from '../../core/eventEngine.js';
 import { calculateAllContributionScores } from '../../core/scoringEngine.js';
 import { calculateAllPEScores } from '../../core/peerEvaluationEngine.js';
@@ -25,6 +27,11 @@ export async function renderLeaderboard(groupId) {
 
   const user = currentUser();
   const me = members.find(m => m.uid === user?.uid);
+
+  // Build profileMap for avatar images
+  const allProfiles = await getAll(STORES.USER_PROFILES);
+  const profileMap = {};
+  (allProfiles || []).forEach(p => { profileMap[p.uid] = p; });
 
   // Compute WPS and PE scores ONLY for the signed-in member's private card (UREB A2)
   const memberIds = members.map(m => m.id);
@@ -113,9 +120,11 @@ export async function renderLeaderboard(groupId) {
             ${top3.map((m, i) => `
               <a href="#/profile/${m.uid || m.id}" class="podium-card podium-${i+1}" style="text-decoration:none; color:inherit; cursor:pointer;" title="View ${escapeHtml(m.displayName)}'s profile & achievements">
                 <span class="podium-rank">
-                  ${i === 0 ? '👑' : i === 1 ? '🥈' : '🥉'}
+                  ${i === 0 ? `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#F59E0B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="14" r="7"/><path d="M12 14v-4"/><path d="M8 6L6 3"/><path d="M16 6l2-3"/><path d="M9 3h6"/></svg>` : i === 1 ? `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#9CA3AF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="14" r="7"/><path d="M12 14v-4"/><path d="M8 6L6 3"/><path d="M16 6l2-3"/><path d="M9 3h6"/></svg>` : `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#CD7C4B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="14" r="7"/><path d="M12 14v-4"/><path d="M8 6L6 3"/><path d="M16 6l2-3"/><path d="M9 3h6"/></svg>`}
                 </span>
-                <div class="avatar avatar-lg">${escapeHtml(m.displayName?.[0] || '?')}</div>
+                <div class="avatar avatar-lg" style="overflow:hidden;">
+                  ${(() => { const pr=profileMap[m.uid]; return pr?.avatarType==='custom'&&pr?.avatar ? `<img src="${pr.avatar}" alt="${escapeHtml(m.displayName?.[0]||'?')}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">` : escapeHtml(m.displayName?.[0]||'?'); })()}
+                </div>
                 <div style="text-align:center;">
                   <div class="podium-name">${escapeHtml(m.displayName)}</div>
                   <div class="podium-points">${m.boardPoints} <span style="font-size:0.7rem;">BP</span></div>
@@ -259,6 +268,11 @@ export async function renderEvaluation(groupId) {
   const me = members.find(m => m.uid === user?.uid) || members.find(m => m.displayName === user?.displayName);
   const others = members.filter(m => m.uid !== user?.uid);
 
+  // profileMap for avatars in eval cards
+  const evalProfiles = await getAll(STORES.USER_PROFILES);
+  const profileMap = {};
+  (evalProfiles || []).forEach(p => { profileMap[p.uid] = p; });
+
   const myReviews = peerReviews.filter(pr => 
     pr.reviewerId === me?.id || 
     pr.reviewerId === user?.uid || 
@@ -295,7 +309,9 @@ export async function renderEvaluation(groupId) {
               <div class="eval-card" style="${existingReview ? 'border-color:rgba(34,197,94,0.45); background:linear-gradient(to bottom, rgba(34,197,94,0.06), transparent);' : ''}">
                 <div class="eval-card-header">
                   <div style="display:flex; align-items:center; gap:12px;">
-                    <div class="avatar">${escapeHtml(m.displayName?.[0] || '?')}</div>
+                    <div class="avatar" style="overflow:hidden;">
+                      ${(() => { const pr=profileMap[m.uid]; return pr?.avatarType==='custom'&&pr?.avatar ? `<img src="${pr.avatar}" alt="${escapeHtml(m.displayName?.[0]||'?')}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">` : escapeHtml(m.displayName?.[0]||'?'); })()}
+                    </div>
                     <div>
                       <h3 style="margin:0; font-size:1.1rem; color:var(--text);">${escapeHtml(m.displayName)}</h3>
                     </div>

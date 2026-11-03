@@ -20,6 +20,11 @@ export async function renderMembers(groupId) {
   // peerReviews fetch removed — WPS/PE no longer computed per-member on this page (UREB A2/A3)
 
   const me = membersList.find(m => m.uid === user.uid);
+
+  // Load profile photos
+  const allMemberProfiles = await getAll(STORES.USER_PROFILES);
+  const memberProfileMap = {};
+  (allMemberProfiles || []).forEach(p => { memberProfileMap[p.uid] = p; });
   const isAdmin = me?.role === 'owner' || me?.role === 'co-admin';
   const isOwner = me?.role === 'owner';
   const isCoOwner = me?.role === 'co-admin';
@@ -64,7 +69,7 @@ export async function renderMembers(groupId) {
           <div class="members-grid">
             ${analysisData
               .sort((a, b) => (a.member.displayName || '').localeCompare(b.member.displayName || ''))
-              .map((data) => memberCardHTML(data, isAdmin, isOwner, me, groupId))
+              .map((data) => memberCardHTML(data, isAdmin, isOwner, me, groupId, memberProfileMap))
               .join('')}
           </div>
         </div>
@@ -79,7 +84,7 @@ export async function renderMembers(groupId) {
 // UREB A3: Risk labels ('High Free-Rider Risk', 'Needs Attention', 'Active & Engaged') removed.
 // UREB A2: WPS share and PE score removed from other members' cards.
 // Members are sorted alphabetically, not by risk score.
-function memberCardHTML(data, isAdmin, isOwner, me, groupId) {
+function memberCardHTML(data, isAdmin, isOwner, me, groupId, profileMap = {}) {
   const { member, assigned, completed, overdue, restricted } = data;
 
   const isMe = member.id === me?.id;
@@ -92,7 +97,9 @@ function memberCardHTML(data, isAdmin, isOwner, me, groupId) {
     <div class="member-card${restricted ? ' member-restricted' : ''}">
       <div class="member-card-header">
         <a href="#/profile/${member.uid || member.id}" style="display:flex; align-items:center; gap:12px; text-decoration:none; color:inherit; flex:1;" title="View ${escapeHtml(member.displayName)}'s profile & achievements">
-          <div class="avatar avatar-lg">${escapeHtml(member.displayName?.[0] || '?')}</div>
+          <div class="avatar avatar-lg" style="overflow:hidden;">
+            ${(() => { const pr=profileMap[member.uid]; return pr?.avatarType==='custom'&&pr?.avatar ? `<img src="${pr.avatar}" alt="${escapeHtml(member.displayName?.[0]||'?')}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">` : escapeHtml(member.displayName?.[0]||'?'); })()}
+          </div>
           <div>
             <h3 class="member-name">
               ${escapeHtml(member.displayName)}

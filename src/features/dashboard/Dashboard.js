@@ -476,7 +476,9 @@ function bindCreateJoin(user, groups, app) {
             const group = await joinGroupByCode({ inviteCode: code, uid: user.uid, displayName: pf?.displayName || user.displayName || user.email });
             navigate(`#/group/${group.id}`);
           } catch (err) {
-            errorEl.textContent = authErrorMessage(err, 'Could not join. Check the code and try again.');
+            errorEl.textContent = err.message === 'JOIN_REQUIRES_APPROVAL'
+              ? 'This board requires approval to join. Use \'Request to Join\' instead.'
+              : authErrorMessage(err, 'Could not join. Check the code and try again.');
             return true;
           }
         },

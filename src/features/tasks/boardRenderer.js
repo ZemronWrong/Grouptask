@@ -235,10 +235,11 @@ export function boardPageHTML(groupId, data, cache) {
     </div>
 
     ${taskModalHTML(members, STATUSES, isAdmin)}
-    ${shareModalHTML(members, group, profileMap)}
+    ${shareModalHTML(members, group, profileMap, me)}
     ${boardMembersModalHTML(members, profileMap)}
     ${proofReviewModalHTML()}
     ${proofSubmitModalHTML()}
     <div id="task-detail-modal-container"></div>
   `;
 }
+

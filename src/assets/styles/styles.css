@@ -507,6 +507,7 @@ textarea { resize: vertical; }
   border-bottom-color: var(--primary);
 }
 .auth-form { display: flex; flex-direction: column; gap: 16px; }
+.auth-form button[type="submit"] { width: 100%; justify-content: center; }
 .auth-error { color: var(--danger); font-size: 0.9rem; min-height: 1.2em; font-style: italic; }
 
 .auth-divider {

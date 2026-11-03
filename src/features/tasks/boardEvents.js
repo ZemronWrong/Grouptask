@@ -406,6 +406,23 @@ export function bindBoardEvents(boardContext, rerenderBoard) {
         row.style.display = name.includes(q) ? 'flex' : 'none';
       });
     }
+
+  });
+
+  // ── Join mode toggle (owner only) ──
+  document.addEventListener('change', async (e) => {
+    if (e.target.id !== 'join-mode-select') return;
+    const { groupId } = boardContext;
+    const mode = e.target.value;
+    const grp = await get(STORES.GROUPS, groupId);
+    if (grp) {
+      grp.joinMode = mode;
+      await put(STORES.GROUPS, grp);
+      await addToSyncQueue({ collection: 'groups', docId: groupId, operation: 'update', data: grp });
+      const desc = document.getElementById('join-mode-desc');
+      if (desc) desc.textContent = mode === 'auto' ? 'Anyone with the code joins immediately.' : 'New members need admin approval.';
+      showToast('Join mode updated!', { type: 'success' });
+    }
   });
 }
 

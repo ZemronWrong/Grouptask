@@ -23,6 +23,55 @@ const STATUS_LABELS = {
 
 // ── Static modal HTML templates ───────────────────────────────────────────────
 
+
+// ── Datetime picker loader (hwangti/vanillajs-datetimepicker via jsDelivr) ──
+const PICKER_CDN_CSS = 'https://cdn.jsdelivr.net/gh/hwangti/vanillajs-datetimepicker@master/dist/css/datepicker.css';
+const PICKER_CDN_JS  = 'https://cdn.jsdelivr.net/gh/hwangti/vanillajs-datetimepicker@master/dist/js/datepicker-full.js';
+let _pickerLoaded = false;
+
+async function loadDatetimePicker() {
+  if (_pickerLoaded) return;
+  // Inject CSS once
+  if (!document.querySelector(`link[href="${PICKER_CDN_CSS}"]`)) {
+    const link = document.createElement('link');
+    link.rel = 'stylesheet'; link.href = PICKER_CDN_CSS;
+    document.head.appendChild(link);
+  }
+  // Load JS once
+  if (!window.DatetimePicker && !window.DateRangePicker) {
+    await new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = PICKER_CDN_JS; s.onload = resolve; s.onerror = reject;
+      document.head.appendChild(s);
+    });
+  }
+  _pickerLoaded = true;
+}
+
+/** Attach the hwangti datetime picker to an input element. */
+function attachDatetimePicker(inputEl, currentValue) {
+  if (!inputEl) return;
+  // Fallback: use datetime-local natively if CDN failed
+  if (!window.DatetimePicker) { inputEl.type = 'datetime-local'; return; }
+  inputEl.type = 'text';
+  inputEl.readOnly = true;
+  const picker = new window.DatetimePicker(inputEl, {
+    format: 'yyyy-mm-dd HH:ii',
+    todayHighlight: true,
+    clearBtn: true,
+    autoclose: true,
+  });
+  if (currentValue) {
+    // Convert ISO/date string to picker format
+    const d = new Date(currentValue);
+    if (!isNaN(d)) picker.setDate(d);
+  }
+  // Sync back to the hidden value on change
+  inputEl.addEventListener('changeDate', () => {
+    inputEl.dataset.pickerValue = inputEl.value;
+  });
+}
+
 export function taskModalHTML(members, statuses, isAdmin = true) {
   return `
     <div class="modal-overlay" id="task-modal" hidden>
@@ -71,7 +120,7 @@ export function taskModalHTML(members, statuses, isAdmin = true) {
           </p>
           <div class="form-group">
             <label for="task-deadline-input">Deadline</label>
-            <input type="datetime-local" id="task-deadline-input" />
+            <input type="text" id="task-deadline-input" autocomplete="off" placeholder="Select date and time" readonly />
           </div>
           <div class="form-group">
             <label>Assign To</label>
@@ -119,7 +168,7 @@ export function taskModalHTML(members, statuses, isAdmin = true) {
   `;
 }
 
-export function shareModalHTML(members, group, profileMap = {}) {
+export function shareModalHTML(members, group, profileMap = {}, me = null) {
   const pendingRequests = group?.joinRequests || [];
 
   return `
@@ -148,6 +197,21 @@ export function shareModalHTML(members, group, profileMap = {}) {
               Invite teammates using this board's invite code: <strong style="color:var(--primary); font-size:0.95rem;">${escapeHtml(group?.inviteCode || '')}</strong>
             </p>
 
+            <div style="margin-bottom:14px; padding:12px 14px; background:var(--bg); border-radius:8px; border:1px solid var(--border);">
+              <div style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
+                <div>
+                  <div style="font-weight:600; font-size:0.85rem; color:var(--text);">Join Mode</div>
+                  <div style="font-size:0.75rem; color:var(--text-muted); margin-top:2px;" id="join-mode-desc">
+                    ${(group?.joinMode || "auto") === "auto" ? "Anyone with the code joins immediately." : "New members need admin approval."}
+                  </div>
+                </div>
+                ${me?.role === "owner" ? `
+                <select id="join-mode-select" style="font-size:0.8rem; padding:5px 8px; border-radius:6px; border:1px solid var(--border); background:var(--bg-input); color:var(--text);">
+                  <option value="auto" ${(group?.joinMode || "auto") === "auto" ? "selected" : ""}>Auto-join</option>
+                  <option value="request" ${group?.joinMode === "request" ? "selected" : ""}>Require approval</option>
+                </select>` : ""}
+              </div>
+            </div>
             <div style="position:relative; margin-bottom:12px;">
               <input type="text" id="share-member-search" class="input" placeholder="Filter members by name..." style="width:100%; box-sizing:border-box; font-size:0.82rem; padding:6px 10px;" />
             </div>
@@ -170,7 +234,7 @@ export function shareModalHTML(members, group, profileMap = {}) {
                       <span class="share-member-name" style="font-size:0.85rem; font-weight:600; color:var(--text);">${escapeHtml(m.displayName)}</span>
                       ${email ? `<span class="share-member-email" style="font-size:0.75rem; color:var(--text-muted);">${escapeHtml(email)}</span>` : ''}
                     </div>
-                    ${m.role === 'owner' ? `
+                    ${m.role === 'owner' || (me && m.id === me.id) ? `
                       <span class="share-role-locked" style="background:var(--primary-soft); color:var(--primary); padding:3px 10px; border-radius:12px; font-size:0.72rem; font-family:var(--font-heading); font-weight:700;">${escapeHtml(getRoleName('owner').toUpperCase())}</span>
                     ` : `
                       <select class="share-role-select" data-member-id="${m.id}" style="font-size:0.75rem; padding:4px 8px; border-radius:6px; border:1px solid var(--border); background:var(--bg-input); color:var(--text);">
@@ -183,11 +247,6 @@ export function shareModalHTML(members, group, profileMap = {}) {
                   </div>
                 `;
               }).join('')}
-            </div>
-
-            <div class="link-box" style="margin-top:16px;">
-              <span class="link-url">${window.location.origin}/#/?join=${group?.inviteCode || ''}</span>
-              <button class="btn btn-secondary btn-sm" id="btn-copy-link-bottom">COPY</button>
             </div>
           </div>
 
@@ -338,6 +397,8 @@ export function proofSubmitModalHTML() {
 
 /** Populate and open the task create/edit modal. */
 export function openTaskModal(task = null, defaultStatus = 'todo') {
+  // Load datetime picker CDN async (non-blocking)
+  loadDatetimePicker().catch(() => {});
   const modal = document.getElementById('task-modal');
   document.getElementById('modal-title').innerHTML = task
     ? `Edit ${getTerm('task')}`
@@ -358,7 +419,12 @@ export function openTaskModal(task = null, defaultStatus = 'todo') {
   if (diffEl)   diffEl.value   = task?.difficulty || 'medium';
   if (typeEl)   typeEl.value   = task?.type || (Array.isArray(task?.tags) && task.tags[0]) || 'task';
   if (weightEl) weightEl.value = task?.weight || 100;
-  if (deadlineEl) deadlineEl.value = task?.deadline || '';
+  if (deadlineEl) {
+    const dv = task?.deadline || '';
+    deadlineEl.value = dv;
+    // Attach picker after a tick so DOM is ready
+    setTimeout(() => attachDatetimePicker(deadlineEl, dv), 50);
+  }
 
   const assigned = task?.assignedTo || '';
   if (assigneeEl) assigneeEl.value = assigned;
