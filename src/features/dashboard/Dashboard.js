@@ -302,7 +302,9 @@ export async function renderDashboard() {
             <button class="dash-action-btn" id="btn-create-group">
               ${ICONS.plus} ${getTerm('newGroup')}
             </button>
-
+            <button class="dash-action-btn" id="btn-join-group">
+              ${ICONS.link} ${getTerm('joinGroup')}
+            </button>
           </div>
         </nav>
       </aside>
@@ -320,7 +322,11 @@ export async function renderDashboard() {
                 <span class="dash-empty-choice-title">${escapeHtml(getTerm('newGroup'))}</span>
                 <span class="dash-empty-choice-text">You'll be the leader: you add tasks, set their weights and approve finished work.</span>
               </button>
-
+              <button class="dash-empty-choice" type="button" id="btn-join-group-empty">
+                <span class="dash-empty-choice-icon">${ICONS.link}</span>
+                <span class="dash-empty-choice-title">${escapeHtml(getTerm('joinGroup'))}</span>
+                <span class="dash-empty-choice-text">Have an invite code from your group leader? Enter it to join your team.</span>
+              </button>
             </div>
           </div>
         `}
@@ -512,5 +518,7 @@ function bindCreateJoin(user, groups, app) {
 
   bindCreate('btn-create-group');
   bindCreate('btn-create-group-empty');
+  bindJoin('btn-join-group');
+  bindJoin('btn-join-group-empty');
 
 }
