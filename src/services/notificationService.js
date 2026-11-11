@@ -1,10 +1,13 @@
 /**
  * Notification Service — Central notification dispatcher.
- * Writes to IndexedDB and optionally triggers browser push notifications.
+ * Writes to IndexedDB AND syncs to Firestore so cross-device notifications
+ * (e.g. join_accepted sent from owner's device to requester's device) are
+ * actually delivered to the recipient.
  */
 
 import { STORES, put, getAll, getAllByIndex, remove, get } from './indexedDBService.js';
 import { generateId } from '../utils/helpers.js';
+import { addToSyncQueue } from './indexedDBService.js';
 
 const MAX_NOTIFICATIONS = 50;
 
@@ -56,6 +59,17 @@ export async function notify({ uid, type, title, message, icon = '🔔', actionL
 
   try {
     await put(STORES.NOTIFICATIONS, notification);
+
+    // Sync to Firestore so the notification reaches the recipient's device
+    // even when the recipient is a different user (cross-device delivery).
+    // The Firestore rule allows any authenticated user to create a notification
+    // as long as it has a 'uid' field.
+    await addToSyncQueue({
+      collection: 'notifications',
+      docId: notification.id,
+      operation: 'add',
+      data: notification,
+    });
 
     // Purge old notifications if over the limit
     const all = await getAllByIndex(STORES.NOTIFICATIONS, 'uid', uid);

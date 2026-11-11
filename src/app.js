@@ -41,6 +41,11 @@ function loadSync() {
   return syncModule;
 }
 
+/** Start notification listener for the signed-in user (persists across group switches). */
+function startNotifSync(uid) {
+  loadSync().then((sync) => sync.startNotificationSync(uid)).catch(() => {});
+}
+
 /** Start live sync for a group without holding up the screen (its first flush waits on the network). */
 function syncGroup(groupId) {
   loadSync().then((sync) => sync.startSync(groupId)).catch((err) => console.warn('[Sync] Could not start:', err.message));
@@ -200,6 +205,19 @@ export async function boot() {
     pendingChanges.clear();
     const path = window.location.hash.slice(1);
 
+    // A new notification arrived on this device (from startNotificationSync).
+    // If we're on the dashboard, pull fresh memberships from Firestore so a
+    // newly accepted join request causes the board to appear without a reload.
+    const hasNotifChange = changes.some((c) => c.collection === 'notifications');
+    if (hasNotifChange && path === '/dashboard') {
+      const user = currentUser();
+      if (user) {
+        const sync = await loadSync();
+        // Pull Firestore member records for this user to discover new groups
+        await pullNewMemberships(user.uid, sync).catch(() => {});
+      }
+    }
+
     const board = path.match(/^\/group\/([^/]+)$/);
     if (board) {
       await (await screens.board()).refreshBoard(board[1], changes);
@@ -214,6 +232,34 @@ export async function boot() {
     }
     pendingReload = false;
     await reloadKeepingScroll();
+  }
+
+  /**
+   * Pull any Firestore member records for this user that aren't in local IDB yet.
+   * Used when a join_accepted notification arrives so the new board appears on
+   * the dashboard immediately.
+   */
+  async function pullNewMemberships(uid, sync) {
+    const { getMembershipsForUser } = await import('./services/memberService.js');
+    const { getAll, STORES: S } = await import('./services/indexedDBService.js');
+    // Check Firestore for member records for this uid
+    const { collection: fsColl, query: fsQ, where: fsWhere, getDocs } = await import('firebase/firestore');
+    const { fsDb } = await import('./config/firestoreDb.js');
+    const snap = await getDocs(fsQ(fsColl(fsDb, 'members'), fsWhere('uid', '==', uid)));
+    const { put, get } = await import('./services/indexedDBService.js');
+    let newGroupIds = [];
+    for (const doc of snap.docs) {
+      const member = { id: doc.id, ...doc.data() };
+      if (member.joinedAt?.seconds) member.joinedAt = member.joinedAt.seconds * 1000;
+      const local = await get(S.MEMBERS, member.id).catch(() => null);
+      if (!local) {
+        await put(S.MEMBERS, member);
+        if (member.groupId) newGroupIds.push(member.groupId);
+      }
+    }
+    // Seed group docs + collections for newly discovered groups
+    await Promise.all(newGroupIds.map((gId) => sync.fetchGroupDataOnce(gId)));
+    if (newGroupIds.length > 0) await reloadKeepingScroll();
   }
 
   function scheduleRemoteChange(change) {
@@ -260,12 +306,12 @@ export async function boot() {
   onAuthChange((user) => {
     const path = currentPath();
     if (!user) {
-      syncModule?.then((sync) => sync.stopSync());
+      syncModule?.then((sync) => { sync.stopSync(); sync.stopNotificationSync?.(); });
       bootstrapUserDataOnce.reset();
       if (!GUEST_PATHS.includes(path)) navigate('#/login');
       return;
     }
-    loadSync();
+    loadSync().then((sync) => sync.startNotificationSync(user.uid)).catch(() => {});
     // F3: download this user's groups once, in the background. Only a device
     // with no local data waits for it (the dashboard route shows skeletons).
     bootstrapUserDataOnce(user.uid).then((downloaded) => {

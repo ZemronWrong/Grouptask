@@ -23,6 +23,7 @@ import { resolveConflict } from './conflictResolver.js';
 import { signalSyncing, signalSynced } from './connectionStatus.js';
 
 let unsubscribers = [];
+let notifUnsubscriber = null;  // separate from group listeners; persists across group switches
 let profileUids = new Set();   // userProfiles we already listen to (E4)
 let isSyncing = false;
 let isSyncingGroup = null;
@@ -30,6 +31,51 @@ let onRemoteChange = null;
 
 export function setRemoteChangeCallback(cb) {
   onRemoteChange = cb;
+}
+
+/**
+ * Listen to this user's Firestore notifications in real time.
+ * Called once after sign-in. Writes new/updated notifications into IndexedDB
+ * and fires the 'notificationAdded' window event so the bell badge updates.
+ * Also fires onRemoteChange so the dashboard re-renders when a join_accepted
+ * notification arrives (which causes the new board to appear).
+ *
+ * @param {string} uid — Firebase Auth UID of the signed-in user
+ */
+export function startNotificationSync(uid) {
+  if (isMock || !uid) return;
+  if (notifUnsubscriber) notifUnsubscriber();  // clean up previous listener
+
+  const q = query(fsCollection(fsDb, 'notifications'), where('uid', '==', uid));
+  notifUnsubscriber = onSnapshot(q, async (snapshot) => {
+    let changed = false;
+    for (const change of snapshot.docChanges()) {
+      if (change.type === 'removed') continue;
+      if (change.doc.metadata?.hasPendingWrites) continue;
+      const remote = normalizeTimestamps({ id: change.doc.id, ...change.doc.data() });
+      const local  = await get(STORES.NOTIFICATIONS, remote.id).catch(() => null);
+      // Only write if truly new or updated
+      if (!local || local.read !== remote.read || local.createdAt !== remote.createdAt) {
+        await put(STORES.NOTIFICATIONS, remote);
+        changed = true;
+      }
+    }
+    if (changed) {
+      window.dispatchEvent(new CustomEvent('notificationAdded'));
+      // If a join_accepted notification arrived, signal the dashboard to re-render
+      // so the newly joined board appears without the user needing to reload.
+      signalRemoteChange('notifications', ['new']);
+    }
+  }, (err) => {
+    console.warn('[Sync] Notification listener error:', err.message);
+  });
+}
+
+export function stopNotificationSync() {
+  if (notifUnsubscriber) {
+    notifUnsubscriber();
+    notifUnsubscriber = null;
+  }
 }
 
 export async function startSync(groupId) {
@@ -409,7 +455,8 @@ function storeForCollection(col) {
     points:           STORES.POINTS,
     proofSubmissions: STORES.PROOF_SUBMISSIONS,
     events:           STORES.EVENTS,
-    comments:         STORES.COMMENTS,  // Bug fix: was missing, causing silent IndexedDB write failures
+    comments:         STORES.COMMENTS,
+    notifications:    STORES.NOTIFICATIONS,
   };
   return map[col] || col;
 }

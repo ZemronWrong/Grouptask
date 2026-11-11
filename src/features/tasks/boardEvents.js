@@ -12,6 +12,7 @@ import { generateId } from '../../utils/helpers.js';
 import { currentUser } from '../../services/authService.js';
 import { kickMember } from '../../services/memberService.js';
 import { notify } from '../../services/notificationService.js';
+import { flushQueue } from '../../services/syncService.js';
 import { logActivity } from '../../services/activityLogService.js';
 import { openTaskModal, openTaskDetailModal } from './TaskModal.js';
 import { renderAchievementPopup } from './TaskCard.js';
@@ -147,6 +148,11 @@ export function bindBoardEvents(boardContext, rerenderBoard) {
           await put(STORES.GROUPS, currentGroup);
           await addToSyncQueue({ collection: 'groups', docId: groupId, operation: 'update', data: currentGroup });
 
+          // Flush immediately so the member record lands in Firestore BEFORE the
+          // notification is delivered — the recipient's fetchGroupDataOnce needs
+          // isMemberOfGroup() to be true when it queries the members collection.
+          await flushQueue();
+
           showToast(`Accepted ${req.displayName} as ${chosenRole}!`, { type: 'success' });
 
           // Notify the requester that they were accepted
@@ -159,6 +165,9 @@ export function bindBoardEvents(boardContext, rerenderBoard) {
             actionLink: `#/group/${groupId}`,
             groupId,
           });
+
+          // Flush again so the notification reaches the requester's device via Firestore
+          await flushQueue();
 
           await rerenderBoard(groupId);
           document.getElementById('share-modal').hidden = false;
