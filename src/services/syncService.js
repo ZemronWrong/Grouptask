@@ -59,6 +59,23 @@ export async function fetchGroupDataOnce(groupId) {
   // B5: Fetch each collection individually so one failure doesn't abort all
   // others (e.g. a rules rejection on peerReviews shouldn't block tasks).
   // Events use 'boardId' not 'groupId' — query adjusted accordingly.
+
+  // Always fetch the group document itself first so the dashboard can list it.
+  // This is critical for newly accepted join-request members whose device has
+  // no group record in IndexedDB yet (the dashboard does
+  //   get(STORES.GROUPS, m.groupId) and skips any group that returns undefined).
+  try {
+    const groupSnap = await getDoc(fsDoc(fsDb, 'groups', groupId));
+    if (groupSnap.exists()) {
+      const remoteGroup = normalizeTimestamps({ id: groupSnap.id, ...groupSnap.data() });
+      const localGroup  = await get(STORES.GROUPS, remoteGroup.id).catch(() => null);
+      const { winner, doc } = resolveConflict(localGroup, remoteGroup);
+      if (winner === 'remote' && doc) await put(STORES.GROUPS, doc);
+    }
+  } catch (groupErr) {
+    console.warn('[Sync] fetchGroupDataOnce: failed to fetch group doc:', groupErr.message);
+  }
+
   const collectionQueries = [
     { colName: 'tasks',           field: 'groupId' },
     { colName: 'members',         field: 'groupId' },

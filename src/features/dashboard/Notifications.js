@@ -9,6 +9,7 @@ import { getNotifications, getUnreadCount, markAsRead, markAllAsRead } from '../
 import { ICONS } from '../../assets/icons/icons.js';
 import { skeletonListHTML } from '../../utils/skeletons.js';
 import { showToast } from '../../utils/ui.js';
+import { fetchGroupDataOnce } from '../../services/syncService.js';
 
 /* ── Notification type → SVG icon ── */
 function notifIcon(type) {
@@ -145,7 +146,7 @@ async function renderNotifList(filter = 'all') {
   }
 
   listEl.innerHTML = filtered.map(n => `
-    <div class="notif-item ${n.read ? '' : 'unread'}" data-notif-id="${n.id}" ${n.actionLink ? `data-action="${n.actionLink}"` : ''}>
+    <div class="notif-item ${n.read ? '' : 'unread'}" data-notif-id="${n.id}" data-type="${n.type || ''}" data-group-id="${n.groupId || ''}" ${n.actionLink ? `data-action="${n.actionLink}"` : ''}>
       <div class="notif-item-icon" style="color:${iconColor(n.type)}">${notifIcon(n.type)}</div>
       <div class="notif-item-body">
         <div class="notif-item-title">${escapeHtml(n.title)}</div>
@@ -164,6 +165,11 @@ async function renderNotifList(filter = 'all') {
       item.querySelector('.notif-unread-dot')?.remove();
       updateBellBadge();
       if (item.dataset.action) {
+        // For join_accepted: seed group + member data into local IndexedDB before
+        // navigating so the board route finds the group doc and member record.
+        if (item.dataset.type === 'join_accepted' && item.dataset.groupId) {
+          await fetchGroupDataOnce(item.dataset.groupId).catch(() => {});
+        }
         navigate(item.dataset.action);
         document.getElementById('notif-dropdown').hidden = true;
       }

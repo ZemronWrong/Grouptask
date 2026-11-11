@@ -131,9 +131,16 @@ export async function boot() {
     board.resetBoardState();
     syncGroup(groupId);
     // On a new browser/device the local DB may be empty — show the board's
-    // skeleton and do a one-shot Firestore pull so it opens with existing tasks
-    const existingTasks = await getAllByIndex(STORES.TASKS, 'groupId', groupId);
-    if (existingTasks.length === 0) {
+    // skeleton and do a one-shot Firestore pull so it opens with existing tasks.
+    // Also trigger for newly accepted join-request members whose local IndexedDB
+    // has no member record for this group yet (group doc will also be missing).
+    const [existingTasks, existingMembers] = await Promise.all([
+      getAllByIndex(STORES.TASKS,   'groupId', groupId),
+      getAllByIndex(STORES.MEMBERS, 'groupId', groupId),
+    ]);
+    const user = currentUser();
+    const isMemberLocally = existingMembers.some((m) => m.uid === user?.uid);
+    if (existingTasks.length === 0 || !isMemberLocally) {
       showSkeletonNow('board');
       await sync.fetchGroupDataOnce(groupId);
     }
