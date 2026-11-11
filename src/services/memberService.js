@@ -8,6 +8,7 @@ import {
   collection,
   doc as fsDoc,
   getDoc,
+  deleteDoc,
   query,
   where,
   getDocs,
@@ -330,16 +331,41 @@ export async function leaveGroup(groupId, member) {
     }
   }
 
-  // 2. Remove member locally and queue Firestore deletion
+  // 2. Remove member locally
   await remove(STORES.MEMBERS, member.id);
-  await addToSyncQueue({
-    collection: 'members',
-    docId: member.id,
-    operation: 'delete',
-    data: { id: member.id, groupId },
-  });
 
-  // 3. Log activity
+  // 3. Delete the member document directly from Firestore so the delete reaches
+  //    all staying members immediately — bypasses the sync queue which may be
+  //    mid-flush and would otherwise silently defer the delete until a later
+  //    flush that may never happen if the user closes the tab right away.
+  if (!isMock && navigator.onLine) {
+    try {
+      await deleteDoc(fsDoc(fsDb, 'members', member.id));
+    } catch (err) {
+      // Fallback: queue the delete so it goes on next reconnect
+      console.warn('[leaveGroup] Direct Firestore delete failed, queuing instead:', err.message);
+      await addToSyncQueue({
+        collection: 'members',
+        docId: member.id,
+        operation: 'delete',
+        data: { id: member.id, groupId },
+      });
+      await flushQueue();
+    }
+  } else {
+    // Offline or mock — queue it for when the user comes back online
+    await addToSyncQueue({
+      collection: 'members',
+      docId: member.id,
+      operation: 'delete',
+      data: { id: member.id, groupId },
+    });
+  }
+
+  // 4. Also flush any pending task-unassign writes so the board is clean for everyone
+  await flushQueue();
+
+  // 5. Log activity
   await logActivity({
     groupId,
     type: 'member_removed',
@@ -348,9 +374,6 @@ export async function leaveGroup(groupId, member) {
     description: `${member.displayName || 'A member'} left the group`,
     meta: { memberId: member.id },
   });
-
-  // 4. Immediately flush queue to ensure Firestore delete completes
-  await flushQueue();
 }
 
 export async function setMemberRestricted(member, restricted) {
