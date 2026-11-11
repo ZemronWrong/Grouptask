@@ -148,6 +148,18 @@ export function bindBoardEvents(boardContext, rerenderBoard) {
           await addToSyncQueue({ collection: 'groups', docId: groupId, operation: 'update', data: currentGroup });
 
           showToast(`Accepted ${req.displayName} as ${chosenRole}!`, { type: 'success' });
+
+          // Notify the requester that they were accepted
+          await notify({
+            uid: req.uid,
+            type: 'join_accepted',
+            title: 'Join Request Accepted',
+            message: `You have been added to ${currentGroup.name} as ${chosenRole}.`,
+            icon: '✅',
+            actionLink: `#/group/${groupId}`,
+            groupId,
+          });
+
           await rerenderBoard(groupId);
           document.getElementById('share-modal').hidden = false;
         }
@@ -161,10 +173,24 @@ export function bindBoardEvents(boardContext, rerenderBoard) {
       const reqId = declineReqBtn.dataset.requestId;
       const currentGroup = await get(STORES.GROUPS, groupId);
       const reqList = currentGroup?.joinRequests || [];
+      const declinedReq = reqList.find((r) => r.id === reqId);
       currentGroup.joinRequests = reqList.filter((r) => r.id !== reqId);
       await put(STORES.GROUPS, currentGroup);
       await addToSyncQueue({ collection: 'groups', docId: groupId, operation: 'update', data: currentGroup });
       showToast('Join request declined.');
+
+      // Notify the requester that their request was declined
+      if (declinedReq) {
+        await notify({
+          uid: declinedReq.uid,
+          type: 'join_declined',
+          title: 'Join Request Not Approved',
+          message: `Your request to join ${currentGroup.name} was not approved.`,
+          icon: '❌',
+          groupId,
+        });
+      }
+
       await rerenderBoard(groupId);
       document.getElementById('share-modal').hidden = false;
       return;

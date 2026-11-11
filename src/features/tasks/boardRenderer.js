@@ -167,6 +167,7 @@ export function boardPageHTML(groupId, data, cache) {
           </div>
           <div class="board-header-right">
             ${isAdmin && pendingProofsCount > 0 ? pendingBadgeHTML(pendingProofsCount) : ''}
+            ${isAdmin && (pendingJoinRequestsCount ?? 0) > 0 ? `<button class="pulse-badge join-requests-badge" id="btn-join-requests-badge" title="Open Share panel to review join requests" style="cursor:pointer;border:none;background:var(--warning);color:#fff;">📬 ${pendingJoinRequestsCount} join request${pendingJoinRequestsCount > 1 ? 's' : ''}</button>` : ''}
             ${memberAvatarStackHTML(members, profileMap)}
             <button class="btn btn-secondary btn-sm" id="btn-share-btn" title="Share" aria-label="Share">
               <span class="btn-icon-inline">${ICONS.link}</span><span class="btn-label"> Share</span>

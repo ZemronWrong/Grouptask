@@ -24,6 +24,9 @@ function notifIcon(type) {
     free_rider_alert:  ICONS.alert,
     member_joined:     ICONS.users,
     member_left:       ICONS.door,
+    join_request:      ICONS.users,
+    join_accepted:     ICONS.checkAll,
+    join_declined:     ICONS.close,
   };
   return map[type] || ICONS.bell;
 }
@@ -66,7 +69,7 @@ const FILTER_MAP = {
   all: () => true,
   tasks: (n) => ['task_assigned', 'task_completed', 'approval_request', 'approval_granted', 'approval_rejected'].includes(n.type),
   evaluations: (n) => ['peer_eval_reminder', 'evaluation_received'].includes(n.type),
-  system: (n) => ['badge_earned', 'free_rider_alert', 'member_joined', 'member_left'].includes(n.type),
+  system: (n) => ['badge_earned', 'free_rider_alert', 'member_joined', 'member_left', 'join_request', 'join_accepted', 'join_declined'].includes(n.type),
 };
 
 /**
@@ -179,6 +182,9 @@ function iconColor(type) {
     free_rider_alert:   'var(--danger)',
     member_joined:      'var(--primary)',
     member_left:        'var(--text-muted)',
+    join_request:       'var(--warning)',
+    join_accepted:      'var(--success)',
+    join_declined:      'var(--danger)',
   };
   return map[type] || 'var(--text-secondary)';
 }

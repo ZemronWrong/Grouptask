@@ -114,4 +114,20 @@ export async function patchBoard(groupId, changes, boardContext, cardHtmlCache) 
     if (badge) badge.outerHTML = pendingBadgeHTML(data.pendingProofsCount);
     else headerRight?.insertAdjacentHTML('afterbegin', pendingBadgeHTML(data.pendingProofsCount));
   }
+
+  // Update the join requests banner in the board header
+  const joinBadge     = headerRight?.querySelector('.join-requests-badge');
+  const joinCount     = data.pendingJoinRequestsCount ?? 0;
+  const showJoinBadge = data.isAdmin && joinCount > 0;
+  if (joinBadge && !showJoinBadge) joinBadge.remove();
+  if (showJoinBadge) {
+    const jHtml = `<button class="pulse-badge join-requests-badge" id="btn-join-requests-badge" title="Review join requests" style="cursor:pointer;border:none;background:var(--warning);color:#fff;">📬 ${joinCount} join request${joinCount > 1 ? 's' : ''}</button>`;
+    if (joinBadge) joinBadge.outerHTML = jHtml;
+    else headerRight?.insertAdjacentHTML('afterbegin', jHtml);
+  }
+  // Click the badge → open Share modal on the Requests tab
+  document.getElementById('btn-join-requests-badge')?.addEventListener('click', () => {
+    document.getElementById('btn-share-btn')?.click();
+    setTimeout(() => document.querySelector('.share-tab-btn[data-tab="requests"]')?.click(), 50);
+  });
 }

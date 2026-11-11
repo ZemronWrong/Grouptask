@@ -39,6 +39,7 @@ export async function loadBoardData(groupId) {
   (allProfiles || []).forEach((p) => { profileMap[p.uid] = p; });
 
   const pendingProofsCount = groupProofs.filter((p) => p.status === 'pending').length;
+  const pendingJoinRequestsCount = isAdmin ? ((group?.joinRequests || []).filter((r) => r.status === 'pending').length) : 0;
 
-  return { group, tasks, members, groupProofs, comments, profileMap, me, isAdmin, pendingProofsCount };
+  return { group, tasks, members, groupProofs, comments, profileMap, me, isAdmin, pendingProofsCount, pendingJoinRequestsCount };
 }
