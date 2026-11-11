@@ -148,7 +148,7 @@ function memberAvatarStackHTML(members, profileMap) {
  * @returns {string}          HTML to assign to app.innerHTML
  */
 export function boardPageHTML(groupId, data, cache) {
-  const { group, tasks, members, profileMap, me, isAdmin, pendingProofsCount } = data;
+  const { group, tasks, members, profileMap, me, isAdmin, pendingProofsCount, pendingJoinRequestsCount } = data;
   const STATUSES  = getStatuses();
   const activeTab = readBoardTab(groupId);
 
