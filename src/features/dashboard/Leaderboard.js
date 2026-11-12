@@ -327,28 +327,52 @@ export async function renderEvaluation(groupId) {
                   }
                 </div>
                 
-                ${existingReview ? `<div style="font-size:0.82rem; color:#22c55e; margin: 8px 0 12px 0; font-weight:600; display:flex; align-items:center; gap:6px;">✓ You evaluated this teammate (${score}/5 ⭐). You can modify your rating or feedback below:</div>` : ''}
+                ${existingReview ? `
+                  <div style="display:flex; align-items:center; gap:8px; margin: 8px 0 14px 0; padding:8px 12px; border-radius:8px; background:rgba(34,197,94,0.08); border:1px solid rgba(34,197,94,0.25);">
+                    <span style="font-size:1rem;">✓</span>
+                    <span style="font-size:0.82rem; color:#4ade80; font-weight:600;">You rated this teammate <strong style="color:#86efac;">${score}/5</strong> — you can update it below.</span>
+                  </div>` : ''}
 
                 <form class="eval-form" data-evaluatee-id="${m.id}">
-                  <div class="form-group" style="margin-bottom:14px;">
-                    <label style="font-weight:600; color:var(--text);">Rating (1-5 Stars)</label>
-                    <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:6px;">
+
+                  <!-- ★ Star picker -->
+                  <div class="form-group" style="margin-bottom:18px;">
+                    <label style="font-size:0.72rem; font-weight:700; letter-spacing:0.08em; color:var(--text-muted); text-transform:uppercase; font-family:var(--font-heading); display:block; margin-bottom:10px;">Rating</label>
+                    <div class="star-picker" data-name="score_${m.id}" style="display:flex; gap:6px; align-items:center;">
                       ${[1,2,3,4,5].map(star => `
-                        <label class="star-rating-pill" style="cursor:pointer; display:inline-flex; align-items:center; gap:6px; padding:6px 14px; border-radius:8px; border:1px solid ${score === star ? 'var(--primary)' : 'var(--border)'}; background:${score === star ? 'var(--primary-soft)' : 'var(--bg-input)'}; color:var(--text); font-family:var(--font-heading); font-weight:${score === star ? '700' : '400'}; transition:all 0.15s ease;">
-                          <input type="radio" name="score_${m.id}" value="${star}" ${score === star ? 'checked' : ''} required style="accent-color:var(--primary);" />
-                          ${star} ⭐
+                        <label class="star-btn" title="${star} star${star>1?'s':''}" style="
+                          cursor:pointer; display:flex; align-items:center; justify-content:center;
+                          width:44px; height:44px; border-radius:10px; font-size:1.5rem;
+                          border:2px solid ${score >= star ? 'var(--primary)' : 'var(--border)'};
+                          background:${score >= star ? 'rgba(99,102,241,0.18)' : 'var(--bg-input)'};
+                          transition:all 0.15s ease; position:relative;
+                          box-shadow:${score >= star ? '0 0 8px rgba(99,102,241,0.3)' : 'none'};
+                        ">
+                          <input type="radio" name="score_${m.id}" value="${star}" ${score === star ? 'checked' : ''} required
+                            style="position:absolute;opacity:0;width:0;height:0;" />
+                          <span style="pointer-events:none; filter:${score >= star ? 'none' : 'grayscale(1) opacity(0.35)'}; transition:filter 0.15s;">★</span>
                         </label>
                       `).join('')}
+                      <span class="star-label" style="margin-left:10px; font-size:0.85rem; font-weight:700; color:var(--text-muted); font-family:var(--font-heading); min-width:60px;">
+                        ${score > 0 ? `${score} / 5` : 'No rating'}
+                      </span>
                     </div>
                   </div>
-                  <div class="form-group" style="margin-bottom:14px;">
-                    <label style="font-weight:600; color:var(--text);">Feedback (Private)</label>
-                    <textarea name="comment_${m.id}" rows="2" placeholder="Write private feedback for your teammate..." style="width:100%; border-radius:8px; border:1px solid var(--border); padding:8px 10px; background:var(--bg-input); color:var(--text); box-sizing:border-box;">${existingReview?.comment || ''}</textarea>
+
+                  <!-- Feedback -->
+                  <div class="form-group" style="margin-bottom:16px;">
+                    <label style="font-size:0.72rem; font-weight:700; letter-spacing:0.08em; color:var(--text-muted); text-transform:uppercase; font-family:var(--font-heading); display:block; margin-bottom:8px;">Feedback <span style="font-weight:400; text-transform:none; letter-spacing:0;">(private — only you and admins can see this)</span></label>
+                    <textarea name="comment_${m.id}" rows="3"
+                      placeholder="Share private feedback for your teammate…"
+                      style="width:100%; border-radius:10px; border:1.5px solid var(--border); padding:10px 12px; background:var(--bg-input); color:var(--text); box-sizing:border-box; font-size:0.9rem; resize:vertical; transition:border-color 0.15s;"
+                      onfocus="this.style.borderColor='var(--primary)'" onblur="this.style.borderColor='var(--border)'"
+                    >${existingReview?.comment || ''}</textarea>
                   </div>
+
                   <div style="display:flex; justify-content:flex-end; align-items:center; gap:12px;">
                     <span class="eval-sync-status" data-review-id="${existingReview?.id || ''}" style="font-size:0.75rem; color:var(--text-muted);">${existingReview && queuedReviewIds.has(existingReview.id) ? SYNC_LABELS.syncing.text : ''}</span>
-                    <button type="submit" class="btn ${existingReview ? 'btn-secondary' : 'btn-primary'} btn-sm" style="font-weight:700;">
-                      ${existingReview ? '✓ Update Evaluation' : 'Submit Evaluation'}
+                    <button type="submit" class="btn ${existingReview ? 'btn-secondary' : 'btn-primary'} btn-sm" style="font-weight:700; padding:8px 20px; border-radius:8px;">
+                      ${existingReview ? '✓ Update Evaluation' : '⭐ Submit Evaluation'}
                     </button>
                   </div>
                 </form>
@@ -363,6 +387,49 @@ export async function renderEvaluation(groupId) {
   bindSidebarEvents(groupId);
 
   bindEvalSyncListeners();
+
+  // ★ Interactive star picker — hover preview + click to select
+  document.querySelectorAll('.star-picker').forEach(picker => {
+    const btns  = Array.from(picker.querySelectorAll('.star-btn'));
+    const label = picker.querySelector('.star-label');
+    const descriptions = ['', 'Poor', 'Fair', 'Good', 'Great', 'Excellent'];
+
+    const paint = (upTo, active) => {
+      btns.forEach((btn, i) => {
+        const filled = i < upTo;
+        btn.style.borderColor    = filled ? 'var(--primary)' : 'var(--border)';
+        btn.style.background     = filled ? 'rgba(99,102,241,0.18)' : 'var(--bg-input)';
+        btn.style.boxShadow      = filled ? '0 0 8px rgba(99,102,241,0.3)' : 'none';
+        btn.style.transform      = (active && filled) ? 'scale(1.08)' : 'scale(1)';
+        const star = btn.querySelector('span');
+        if (star) star.style.filter = filled ? 'none' : 'grayscale(1) opacity(0.35)';
+      });
+    };
+
+    // Hover preview
+    btns.forEach((btn, i) => {
+      btn.addEventListener('mouseenter', () => {
+        paint(i + 1, false);
+        if (label) label.textContent = `${i + 1} / 5 — ${descriptions[i + 1]}`;
+      });
+      btn.addEventListener('mouseleave', () => {
+        const checked = picker.querySelector('input[type="radio"]:checked');
+        const val = checked ? parseInt(checked.value) : 0;
+        paint(val, true);
+        if (label) label.textContent = val > 0 ? `${val} / 5 — ${descriptions[val]}` : 'No rating';
+      });
+      btn.addEventListener('click', () => {
+        const radio = btn.querySelector('input[type="radio"]');
+        if (radio) { radio.checked = true; radio.dispatchEvent(new Event('change', { bubbles: true })); }
+        paint(i + 1, true);
+        if (label) label.textContent = `${i + 1} / 5 — ${descriptions[i + 1]}`;
+      });
+    });
+
+    // Init paint for existing rating
+    const checked = picker.querySelector('input[type="radio"]:checked');
+    if (checked) paint(parseInt(checked.value), true);
+  });
 
   // E2b: submitting only writes the review locally and queues it (two quick
   // IndexedDB writes), then shows the result. The upload runs in the background.
