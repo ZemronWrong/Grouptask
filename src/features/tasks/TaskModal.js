@@ -52,7 +52,28 @@ async function loadDatetimePicker() {
 function attachDatetimePicker(inputEl, currentValue) {
   if (!inputEl) return;
   // Fallback: use datetime-local natively if CDN failed
-  if (!window.DatetimePicker) { inputEl.type = 'datetime-local'; return; }
+  if (!window.DatetimePicker) {
+    inputEl.type = 'datetime-local';
+    inputEl.readOnly = false;
+    inputEl.removeAttribute('readonly');
+    // Keep dataset.isoValue in sync for the save path
+    inputEl.addEventListener('change', () => {
+      const val = inputEl.value; // "yyyy-MM-ddTHH:mm" — already valid ISO-ish
+      inputEl.dataset.isoValue = val ? new Date(val).toISOString() : '';
+    });
+    // Seed from currentValue if editing an existing task
+    if (currentValue) {
+      const normalized = typeof currentValue === 'string' && !currentValue.includes('T')
+        ? currentValue.replace(' ', 'T')
+        : currentValue;
+      const d = new Date(normalized);
+      if (!isNaN(d)) {
+        // datetime-local value must be "yyyy-MM-ddTHH:mm"
+        inputEl.value = d.toISOString().slice(0, 16);
+      }
+    }
+    return;
+  }
   inputEl.type = 'text';
   inputEl.readOnly = true;
   const picker = new window.DatetimePicker(inputEl, {
