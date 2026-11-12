@@ -338,7 +338,7 @@ export async function renderEvaluation(groupId) {
                   <!-- ★ Star picker -->
                   <div class="form-group" style="margin-bottom:18px;">
                     <label style="font-size:0.72rem; font-weight:700; letter-spacing:0.08em; color:var(--text-muted); text-transform:uppercase; font-family:var(--font-heading); display:block; margin-bottom:10px;">Rating</label>
-                    <div class="star-picker" data-name="score_${m.id}" style="display:flex; gap:6px; align-items:center;">
+                    <div class="star-picker" data-name="score_${m.id}" style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
                       ${[1,2,3,4,5].map(star => `
                         <label class="star-btn" title="${star} star${star>1?'s':''}" style="
                           cursor:pointer; display:flex; align-items:center; justify-content:center;

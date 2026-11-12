@@ -1411,9 +1411,9 @@ input[type="datetime-local"]::-webkit-datetime-edit-ampm-field:focus {
 .lb-name-level { font-size: 0.65rem; color: var(--accent); display: block; margin-top: 2px; }
 
 /* Evaluation */
-.eval-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 24px; transition: all var(--transition); margin-bottom: 16px; }
+.eval-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 20px; transition: all var(--transition); margin-bottom: 16px; }
 [data-board-theme="school"] .eval-card { border-bottom-width: 4px; }
-.eval-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
+.eval-card-header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
 .eval-pe-score { font-family: var(--font-heading); color: var(--accent); font-weight: bold; font-size: 1.1rem; padding: 4px 12px; background: var(--primary-soft); border-radius: 20px; }
 
 /* ═══════════════════════════════════════════
@@ -3524,12 +3524,16 @@ input[type="datetime-local"]::-webkit-datetime-edit-ampm-field:focus {
 }
 
 /* ── Responsive ── */
+@media (max-width: 900px) {
+  .dash-global-actions { top: 16px !important; right: 16px !important; }
+}
 @media (max-width: 700px) {
   .dash-layout { flex-direction: column; }
   .dash-sidebar { width: 100%; min-height: auto; position: relative; }
   .dash-group-list { max-height: 250px; }
   .pulse-stats-row { grid-template-columns: repeat(2, 1fr); }
   .pulse-panel { padding: 16px; }
+  .dash-global-actions { top: 12px !important; right: 14px !important; gap: 4px !important; }
 }
 
 /* ═══════════════════════════════════════════
@@ -4347,7 +4351,17 @@ input[type="datetime-local"]::-webkit-datetime-edit-ampm-field:focus {
     padding: 8px 12px 0;
     border-bottom: 1px solid var(--border);
   }
-  .kanban-wrapper { flex-direction: column; padding: 12px; }
+  .kanban-wrapper {
+    flex-direction: column;
+    padding: 12px;
+    overflow-x: hidden;
+    overflow-y: auto;
+    scroll-snap-type: none;
+  }
+  .kanban-area::before,
+  .kanban-area::after {
+    display: none !important;
+  }
   .kanban-board { display: contents; }
   .kanban-column, .completed-panel { display: none; flex: 1; width: auto; min-height: 0; padding: 0; border: none; background: none; }
   .kanban-area[data-active-tab="todo"] .kanban-column[data-status="todo"],
@@ -4393,23 +4407,28 @@ input[type="datetime-local"]::-webkit-datetime-edit-ampm-field:focus {
 }
 
 /* ── H5: compact page header ── */
-.board-title { min-width: 0; }
+.board-title { min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .board-title-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.board-header-left { min-width: 0; }
-@container main (width < 1000px) {
+.board-header-left { min-width: 0; flex: 1; }
+@container main (width < 1050px) {
   .board-header { padding: 12px 16px; gap: 8px; }
   .board-title { font-size: 1.1rem; }
-  .board-header-right { gap: 8px; }
+  .board-header-right { gap: 6px; }
+  /* Collapse button text to icons so headers never burst on split-screen / narrow windows */
+  .board-header .btn-label, .board-header .member-count-label { display: none; }
+  .board-header .member-avatar-stack { margin-right: 0 !important; }
 }
 @container main (width < 760px) {
   .board-header { padding: 8px 12px; }
-  .board-header-left { flex: 1; }
   .board-header-right { flex-shrink: 0; gap: 6px; }
   .board-title { font-size: 1rem; }
-  /* Share and the member count shrink to icons (labels stay in tooltips) */
-  .board-header .btn-label, .board-header .member-count-label { display: none; }
-  .board-header .member-avatar-stack { margin-right: 0 !important; }
   .board-header .pulse-badge { max-width: 30cqi; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+}
+@container main (width < 600px) {
+  .board-header { padding: 8px 10px; gap: 6px; }
+  .board-header-right { gap: 4px; }
+  .board-header-right .btn-sm { padding: 5px 8px; font-size: 0.75rem; }
+  .board-header .pulse-badge { padding: 2px 6px; font-size: 0.7rem; }
 }
 @container main (width < 420px) {
   .board-header .avatar-stack-item:nth-child(n+3) { display: none; }
@@ -4439,7 +4458,7 @@ input[type="datetime-local"]::-webkit-datetime-edit-ampm-field:focus {
 
 /* Icon rail */
 :root[data-nav="rail"] { --sidebar-width: 64px; }
-:root[data-nav="rail"] .sidebar { flex-shrink: 0; }
+:root[data-nav="rail"] .sidebar { flex-shrink: 0; animation: none; transition: width 0.2s ease; }
 :root[data-nav="rail"] .sidebar .sidebar-label,
 :root[data-nav="rail"] .sidebar .sidebar-role-label { display: none; }
 :root[data-nav="rail"] .sidebar-logo { flex-direction: column; padding: 14px 0 6px; gap: 6px; }
@@ -4542,7 +4561,7 @@ input[type="datetime-local"]::-webkit-datetime-edit-ampm-field:focus {
 
 /* ── H6: other screens at half width ── */
 /* Leaderboard: the podium stacks (1st, 2nd, 3rd) only when three cards can't sit side by side */
-@container main (width < 560px) {
+@container main (width < 680px) {
   .podium { flex-direction: column; align-items: center; gap: 12px; padding: 8px 0; }
   .podium-card { width: 100%; max-width: 320px; }
   .podium-1 { order: 1; }
