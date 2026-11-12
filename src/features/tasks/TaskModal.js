@@ -66,9 +66,18 @@ function attachDatetimePicker(inputEl, currentValue) {
     const d = new Date(currentValue);
     if (!isNaN(d)) picker.setDate(d);
   }
-  // Sync back to the hidden value on change
+  // Sync back: store both display value and ISO string on change
   inputEl.addEventListener('changeDate', () => {
-    inputEl.dataset.pickerValue = inputEl.value;
+    const raw = inputEl.value; // e.g. "2026-11-15 14:30"
+    inputEl.dataset.pickerValue = raw;
+    if (raw) {
+      // Convert picker format "yyyy-mm-dd HH:ii" → ISO by replacing space with 'T'
+      const iso = raw.replace(' ', 'T') + ':00';
+      const parsed = new Date(iso);
+      inputEl.dataset.isoValue = isNaN(parsed) ? '' : parsed.toISOString();
+    } else {
+      inputEl.dataset.isoValue = '';
+    }
   });
 }
 
@@ -422,6 +431,14 @@ export function openTaskModal(task = null, defaultStatus = 'todo') {
   if (deadlineEl) {
     const dv = task?.deadline || '';
     deadlineEl.value = dv;
+    // Seed dataset.isoValue so save works even if user doesn't touch the picker
+    if (dv) {
+      const normalized = dv.includes('T') ? dv : dv.replace(' ', 'T') + ':00';
+      const parsed = new Date(normalized);
+      deadlineEl.dataset.isoValue = isNaN(parsed) ? '' : parsed.toISOString();
+    } else {
+      deadlineEl.dataset.isoValue = '';
+    }
     // Attach picker after a tick so DOM is ready
     setTimeout(() => attachDatetimePicker(deadlineEl, dv), 50);
   }

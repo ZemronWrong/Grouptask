@@ -5,7 +5,12 @@
  */
 export function formatDate(isoString) {
   if (!isoString) return '';
-  const d = new Date(isoString);
+  // Handle legacy picker format "yyyy-mm-dd HH:ii" (space instead of T)
+  const normalized = typeof isoString === 'string' && !isoString.includes('T')
+    ? isoString.replace(' ', 'T') + ':00'
+    : isoString;
+  const d = new Date(normalized);
+  if (isNaN(d)) return '';
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
@@ -16,7 +21,12 @@ export function formatDate(isoString) {
  */
 export function formatRelative(isoString) {
   if (!isoString) return '';
-  const diff = new Date(isoString) - new Date();
+  // Handle legacy picker format "yyyy-mm-dd HH:ii" (space instead of T)
+  const normalized = typeof isoString === 'string' && !isoString.includes('T')
+    ? isoString.replace(' ', 'T') + ':00'
+    : isoString;
+  const diff = new Date(normalized) - new Date();
+  if (isNaN(diff)) return '';
   const days = Math.ceil(diff / (1000 * 60 * 60 * 24));
   if (days < 0) return `${Math.abs(days)}d overdue`;
   if (days === 0) return 'Due today';

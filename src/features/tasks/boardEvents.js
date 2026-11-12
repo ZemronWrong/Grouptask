@@ -541,7 +541,18 @@ export async function saveTask(groupId, members) {
     type:        isAdminEdit ? (document.getElementById('task-type-input')?.value || 'task') : (oldTask?.type || 'task'),
     tags:        isAdminEdit ? [document.getElementById('task-type-input')?.value || 'task'] : (oldTask?.tags || ['task']),
     weight,
-    deadline:    isAdminEdit ? (document.getElementById('task-deadline-input').value || null) : (oldTask?.deadline ?? null),
+    deadline:    isAdminEdit ? (() => {
+      const dlEl = document.getElementById('task-deadline-input');
+      // Prefer ISO string set by picker's changeDate handler
+      if (dlEl?.dataset?.isoValue) return dlEl.dataset.isoValue;
+      // Fallback: datetime-local native input returns "yyyy-MM-ddTHH:mm" (valid ISO)
+      const raw = dlEl?.value || '';
+      if (!raw) return null;
+      // Handle picker format "yyyy-mm-dd HH:ii" → ISO
+      const normalized = raw.includes('T') ? raw : raw.replace(' ', 'T') + ':00';
+      const parsed = new Date(normalized);
+      return isNaN(parsed) ? null : parsed.toISOString();
+    })() : (oldTask?.deadline ?? null),
     assignedTo, status,
     updatedAt: Date.now(),
     createdAt:   isNew ? Date.now() : undefined,
