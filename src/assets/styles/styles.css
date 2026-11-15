@@ -3070,7 +3070,8 @@ input[type="datetime-local"]::-webkit-datetime-edit-ampm-field:focus {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  gap: 16px;
+  flex-wrap: wrap;
+  gap: 12px;
   margin-bottom: 24px;
 }
 
@@ -3080,6 +3081,8 @@ input[type="datetime-local"]::-webkit-datetime-edit-ampm-field:focus {
   font-weight: 700;
   color: var(--text);
   margin-bottom: 4px;
+  word-break: break-word;
+  min-width: 0;
 }
 
 .pulse-invite-code {
@@ -3095,8 +3098,10 @@ input[type="datetime-local"]::-webkit-datetime-edit-ampm-field:focus {
 .pulse-header-actions {
   display: flex;
   align-items: center;
-  gap: 12px;
-  flex-shrink: 0;
+  flex-wrap: wrap;
+  gap: 8px;
+  flex-shrink: 1;
+  min-width: 0;
 }
 
 /* Health pill */
@@ -3534,6 +3539,9 @@ input[type="datetime-local"]::-webkit-datetime-edit-ampm-field:focus {
   .pulse-stats-row { grid-template-columns: repeat(2, 1fr); }
   .pulse-panel { padding: 16px; }
   .dash-global-actions { top: 12px !important; right: 14px !important; gap: 4px !important; }
+  .pulse-group-name { font-size: 1.2rem; }
+  .pulse-panel-header { gap: 10px; margin-bottom: 16px; }
+  .pulse-header-actions { width: 100%; justify-content: flex-start; }
 }
 
 /* ═══════════════════════════════════════════

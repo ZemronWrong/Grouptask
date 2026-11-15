@@ -123,11 +123,11 @@ function renderPulsePanel(group, tasks, recentEvents, members) {
             ${ICONS.link} Code: <code>${escapeHtml(group.inviteCode || '—')}</code>
           </span>
         </div>
-        <div class="pulse-header-actions" style="gap: 16px;">
+        <div class="pulse-header-actions">
           <span class="health-pill health-${health}">
             <span class="health-dot"></span>${health}
           </span>
-          <div style="display:flex; gap:8px;">
+          <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
             <button class="btn btn-primary btn-sm" id="btn-open-board">Open Board</button>
             ${myRole === 'owner' ? `
               <button class="btn btn-danger btn-sm" id="btn-dash-delete-group" data-group-id="${group.id}" title="Delete Board">${ICONS.trash} Delete Board</button>
